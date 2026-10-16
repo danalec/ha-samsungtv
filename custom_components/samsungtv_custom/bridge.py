@@ -115,6 +115,12 @@ def model_may_require_encryption(model: str | None) -> bool:
 # differently; the wording observed on a QN90B is exactly "No Authorized".
 AUTH_ERROR_MESSAGES = ("no authorized", "not authorized", "unauthorized")
 
+# An ms.error that names a method is about the protocol, not about the token.
+# "unrecognized method value : ms.remote.control" and a hypothetical
+# "unauthorized method value : ms.remote.control" mean the TV wants the PIN
+# flow, and must not be diverted into re-authentication.
+METHOD_IN_ERROR_MESSAGE = "ms.remote.control"
+
 # The TV reports its physical inputs here and accepts a switch on ed.setSource.
 # Both are websocket-only: the legacy protocol has no channel to emit on.
 ED_SOURCES_EVENT = "ed.sourcesChanged"
@@ -126,6 +132,8 @@ def is_auth_error_message(message: object) -> bool:
     if not isinstance(message, str):
         return False
     lowered = message.lower()
+    if METHOD_IN_ERROR_MESSAGE in lowered:
+        return False
     return any(candidate in lowered for candidate in AUTH_ERROR_MESSAGES)
 
 

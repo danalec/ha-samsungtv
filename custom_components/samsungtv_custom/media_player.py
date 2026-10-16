@@ -380,10 +380,16 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             if not this_key:
                 continue
 
-            if this_key.isdigit():
+            # A signed integer is a delay request too. `isdigit()` alone is
+            # False for "-100", which then fell through to the key branch and
+            # was sent to the TV as a key code - one it silently ignores - so
+            # the chain ran with no delay where the author asked for one.
+            magnitude = this_key.lstrip("+-")
+
+            if magnitude.isdigit() and magnitude:
                 await asyncio.sleep(
                     min(
-                        max(int(this_key) / 1000, KEYPRESS_MIN_DELAY),
+                        max(int(magnitude) / 1000, KEYPRESS_MIN_DELAY),
                         KEYPRESS_MAX_DELAY,
                     )
                 )

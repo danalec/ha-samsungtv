@@ -108,6 +108,16 @@ async def main():
     sent, el = await run(" KEY_TV + 100 + KEY_ENTER ")
     check("whitespace tolerated", sent, ["KEY_TV", "KEY_ENTER"])
 
+    # "-100".isdigit() is False, so a signed delay used to fall through to the
+    # key branch and be sent to the TV as a key code it silently ignores. The
+    # chain then ran with no delay where the author asked for one.
+    sent, el = await run("KEY_A+-100+KEY_B")
+    check("signed delay is not sent as a key", sent, ["KEY_A", "KEY_B"])
+    check("signed negative clamps to min", round(el, 2), round(ns["KEYPRESS_MIN_DELAY"], 2))
+
+    sent, el = await run("KEY_A++100+KEY_B")
+    check("leading plus delay is not sent as a key", sent, ["KEY_A", "KEY_B"])
+
     sent, el = await run("KEY_EXIT+KEY_EXIT+KEY_ENTER")
     check("three keys", sent, ["KEY_EXIT", "KEY_EXIT", "KEY_ENTER"])
 

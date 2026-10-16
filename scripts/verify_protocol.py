@@ -167,9 +167,13 @@ namespace: dict[str, object] = {
     "ENCRYPTED_WEBSOCKET_PORT": 8000,
     "is_auth_error_message": load_function(
         "is_auth_error_message",
-        extra_globals={"AUTH_ERROR_MESSAGES": load_constant("AUTH_ERROR_MESSAGES")},
+        extra_globals={
+            "AUTH_ERROR_MESSAGES": load_constant("AUTH_ERROR_MESSAGES"),
+            "METHOD_IN_ERROR_MESSAGE": load_constant("METHOD_IN_ERROR_MESSAGE"),
+        },
     ),
     "AUTH_ERROR_MESSAGES": load_constant("AUTH_ERROR_MESSAGES"),
+        "METHOD_IN_ERROR_MESSAGE": load_constant("METHOD_IN_ERROR_MESSAGE"),
 }
 
 # Recompile _remote_event against the namespace above.
@@ -231,6 +235,14 @@ check("No Authorized -> no config rewrite", bridge.config_updates, [])
 for variant in ("no authorized", "Not Authorized", "Unauthorized"):
     bridge = fire(error(variant))
     check(f"case variant {variant!r} -> auth_failed", bridge.auth_failed, True)
+
+# An ms.error naming a method is about the protocol, not the token. The
+# known message is handled by the branch above; a firmware that wordes it
+# with "unauthorized" must not be diverted into re-authentication.
+bridge = fire(error("unauthorized method value : ms.remote.control"))
+check("unauthorized *method* -> auth_failed", bridge.auth_failed, False)
+check("unauthorized *method* -> reauth calls", bridge.reauth_calls, 0)
+check("unauthorized *method* -> no config rewrite", bridge.config_updates, [])
 
 # The pre-existing upstream branch must keep working untouched.
 bridge = fire(error("unrecognized method value : ms.remote.control"))
