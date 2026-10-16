@@ -1,7 +1,10 @@
 # Based on home-assistant/core pyproject.toml, scoped to what this component
 # actually needs. The old top-level `select` form is rejected by ruff >= 0.2.
-
-target-version = "py310"
+#
+# target-version matches the upstream this component is based on: HA core
+# requires-python is ">=3.14.2", so the bridge legitimately uses PEP 649
+# (lazy annotations) and the PEP 758 unparenthesized except syntax.
+target-version = "py314"
 
 [lint]
 select = [
@@ -37,3 +40,8 @@ keep-runtime-typing = true
 
 [lint.mccabe]
 max-complexity = 30
+
+[lint.per-file-ignores]
+# SamsungTVBridge annotates its own methods with its own type. That is a
+# forward reference inside the class body and is valid under PEP 649.
+"custom_components/samsungtv_custom/bridge.py" = ["F821"]

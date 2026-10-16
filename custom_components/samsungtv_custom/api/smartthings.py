@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from asyncio import TimeoutError as AsyncTimeoutError
 from collections.abc import Callable
 from datetime import timedelta
 from enum import Enum
@@ -502,11 +501,7 @@ class SmartThingsTV:
         # Check device health (just for diagnostics, not for power state)
         try:
             is_online = await self.async_device_health()
-        except (
-            AsyncTimeoutError,
-            ClientConnectionError,
-            ClientResponseError,
-        ) as ex:
+        except (TimeoutError, ClientConnectionError, ClientResponseError) as ex:
             _LOGGER.debug("SmartThings health check failed: %s", ex)
             is_online = None  # Unknown, still try to read the status anyway
 
@@ -585,11 +580,7 @@ class SmartThingsTV:
             else:
                 self._channel = ""
                 self._channel_name = ""
-        except (
-            AsyncTimeoutError,
-            ClientConnectionError,
-            ClientResponseError,
-        ) as ex:
+        except (TimeoutError, ClientConnectionError, ClientResponseError) as ex:
             _LOGGER.error("SmartThings device status update failed: %s", ex)
             self._state = STStatus.STATE_UNKNOWN
         except Exception as ex:

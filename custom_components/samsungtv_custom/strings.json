@@ -1,156 +1,97 @@
 {
   "config": {
     "abort": {
-      "already_configured": "This Samsung TV is already configured.",
-      "already_in_progress": "Samsung TV configuration is already in progress.",
-      "host_unique_id": "Reconfiguration not possible because the hostname is used as unique id. Please remove this entry and configure a new one.",
-      "reconfigure_successful": "Samsung TV reconfiguration completed successfully.",
-      "unsupported_version": "This integration requires at least Home Assistant version {req_ver}, you are running version {run_ver}."
+      "already_configured": "This device is already configured.",
+      "auth_missing": "Home Assistant is not authorized to connect to this Samsung TV. Check your TV's External Device Manager settings to authorize Home Assistant.",
+      "cannot_connect": "Failed to connect.",
+      "id_missing": "This Samsung device doesn't have a serial number to identify it.",
+      "not_supported": "This Samsung device is currently not supported."
     },
     "error": {
-      "auth_missing": "Home Assistant is not authorized to connect to this Samsung TV. Please check your TV's settings to authorize Home Assistant.",
+      "auth_missing": "Home Assistant is not authorized to connect to this Samsung TV. Check your TV's External Device Manager settings to authorize Home Assistant.",
       "invalid_host": "Invalid host.",
-      "not_successful": "Unable to create a WebSocket connection with this Samsung TV device.",
-      "not_supported": "This Samsung TV device is currently not supported.",
-      "only_key_or_st": "Specify only access token or SmartThings entry.",
-      "st_api_key_fail": "Failed to retrieve access token from SmartThings entry.",
-      "st_device_not_found": "SmartThings TV deviceID not found.",
-      "st_device_used": "SmartThings TV deviceID already used.",
-      "wrong_api_key": "Wrong SmartThings token."
+      "invalid_pin": "The PIN is invalid. Please try again."
     },
-    "flow_title": "SamsungTV Custom: {model}",
+    "flow_title": "{device}",
     "step": {
       "confirm": {
-        "description": "Do you want to set up Samsung TV {model}? If you never connected Home Assistant before you should see a popup on your TV asking for authorization. Manual configurations for this TV will be overwritten."
+        "description": "Do you want to set up {device}? If you have never connected Home Assistant before, you should see a popup on your TV asking for authorization."
       },
-      "user": {
+      "encrypted_pairing": {
         "data": {
-          "host": "Host or IP address",
-          "name": "Name assigned to the entity",
-          "use_ha_name_for_ws": "Use HA instance name for identification on TV",
-          "api_key": "SmartThings generated token (optional)",
-          "st_entry_unique_id": "SmartThings entry used to provide SmartThings credential"
+          "pin": "PIN"
         },
-        "description": "Enter your Samsung TV information. SmartThings is optional but really suggested.\nAfter confirm you should see a popup on your TV asking for authorization."
+        "data_description": {
+          "pin": "The PIN displayed on your TV."
+        },
+        "description": "Please enter the PIN displayed on {device}."
+      },
+      "pairing": {
+        "description": "Do you want to set up {device}? If you have never connected Home Assistant before, you should see a popup on your TV asking for authorization."
+      },
+      "reauth_confirm": {
+        "description": "After submitting, accept the popup on {device} requesting authorization within 30 seconds or input PIN."
+      },
+      "reauth_confirm_encrypted": {
+        "data": {
+          "pin": "PIN"
+        },
+        "data_description": {
+          "pin": "The PIN displayed on your TV."
+        },
+        "description": "Please enter the PIN displayed on {device}."
       },
       "reconfigure": {
         "data": {
-          "host": "Host or IP address",
-          "api_key": "SmartThings generated token (optional, if empty the existing one is kept)",
-          "st_entry_unique_id": "SmartThings entry used to provide SmartThings credential"
+          "host": "Host"
         },
-        "description": "Enter your Samsung TV information to update. SmartThings configuration can be changed but not removed.\nAfter confirm you could see a popup on your TV asking for authorization."
+        "data_description": {
+          "host": "The hostname or IP address of your TV."
+        },
+        "description": "Update the hostname or IP address of your Samsung TV."
       },
-      "stdevice": {
+      "user": {
         "data": {
-          "st_devices": "SmartThings TV"
+          "host": "Host",
+          "name": "Name"
         },
-        "description": "You have multiple TVs configured on your account. Select the TV you are configuring from the list."
-      },
-      "stdeviceid": {
-        "data": {
-          "device_id": "SmartThings TV deviceID"
+        "data_description": {
+          "host": "The hostname or IP address of your TV.",
+          "name": "The name of your TV. This will be used to identify the device in Home Assistant."
         },
-        "description": "Automatic SmartThings deviceID detection failed. To continue you must identify the deviceID on the SmartThings site (see documentation) and insert it here."
+        "description": "Enter your Samsung TV information. If you have never connected Home Assistant before, you should see a popup on your TV asking for authorization."
       }
     }
   },
-  "options": {
-    "step": {
-      "init": {
-        "title": "SamsungTV Custom options",
-        "data": {
-          "use_st_status_info": "Use SmartThings TV Status information",
-          "use_st_channel_info": "Use SmartThings TV Channels information",
-          "show_channel_number": "Use SmartThings TV Channels number information",
-          "app_load_method": "Applications list load mode at startup",
-          "logo_option": "Display a logo for known sources, apps and channels",
-          "use_local_logo": "Allow use of local logo images",
-          "power_on_method": "Method used to turn on TV",
-          "show_adv_opt": "Show options menu"
-        }
-      },
-      "menu": {
-        "title": "SamsungTV Custom options menu",
-        "menu_options": {
-          "adv_opt": "Advanced options",
-          "app_list": "Applications list configuration",
-          "channel_list": "Channels list configuration",
-          "init": "Standard options",
-          "save_exit": "Save options and exit",
-          "source_list": "Sources list configuration",
-          "sync_ent": "Synched entities configuration"
-        }
-      },
-      "adv_opt": {
-        "title": "SamsungTV Custom advanced options",
-        "data": {
-          "app_launch_method": "Applications launch method used",
-          "dump_apps": "Dump apps list on log file at startup (when possible)",
-          "use_mute_check": "Use volume mute status to detect fake power ON",
-          "wol_repeat": "Number of times the WOL packet is sent to turn on the TV",
-          "power_on_delay": "Seconds to delay power ON status",
-          "ping_port": "TCP port used to check power status (0 for ICMP)",
-          "ext_power_entity": "Binary sensor to help detect power status",
-          "toggle_art_mode": "Power button switch to art mode (Frame TV only)"
-        }
-      },
-      "sync_ent": {
-        "title": "SamsungTV Custom synched entities",
-        "data": {
-          "sync_turn_off": "List of entities to power OFF with the TV",
-          "sync_turn_on": "List of entities to power ON with the TV"
-        }
-      },
-      "app_list": {
-        "title": "SamsungTV Custom applications list configuration",
-        "data": {
-          "app_list": "Applications list:"
-        }
-      },
-      "channel_list": {
-        "title": "SamsungTV Custom channels list configuration",
-        "data": {
-          "channel_list": "Channels list:"
-        }
-      },
-      "source_list": {
-        "title": "SamsungTV Custom sources list configuration",
-        "data": {
-          "source_list": "Sources list:"
-        }
-      }
+  "device_automation": {
+    "trigger_type": {
+      "samsungtv_custom.turn_on": "Device is requested to turn on"
+    }
+  },
+  "exceptions": {
+    "encrypted_mode_auth_failed": {
+      "message": "Token and session ID are required in encrypted mode."
     },
-    "error": {
-      "invalid_tv_list": "Invalid format. Please check the documentation."
-    }
-  },
-  "services": {
-    "select_picture_mode": {
-      "name": "Select picture mode",
-      "description": "Send to the Samsung TV the command to change picture mode.",
-      "fields": {
-        "picture_mode": {
-          "name": "Picture mode",
-          "description": "Name of the picture mode to switch to. Possible options can be found in the picture_mode_list state attribute."
-        }
-      }
+    "error_sending_command": {
+      "message": "Unable to send command to {host}: {error}"
     },
-    "set_art_mode": {
-      "name": "Set art mode",
-      "description": "Send to the Samsung TV the command to set art mode.",
-      "fields": {}
-    }
-  },
-  "entity": {
-    "media_player": {
-      "state_attributes": {
-        "source_list": {
-          "state_attributes": {
-            "picture_mode_list": "Picture modes reported by this TV."
-          }
-        }
-      }
+    "error_set_volume": {
+      "message": "Unable to set volume level on {host}: {error}"
+    },
+    "invalid_device": {
+      "message": "Device with ID {device_id} is invalid or not found."
+    },
+    "media_id_invalid": {
+      "message": "Media ID must be a positive integer."
+    },
+    "service_unsupported": {
+      "message": "Unable to turn on {entity}, as it does not have an automation configured."
+    },
+    "source_unsupported": {
+      "message": "Entity {entity} does not support source {source}."
+    },
+    "unhandled_trigger_type": {
+      "message": "Unhandled trigger type {trigger_type}."
     }
   }
 }

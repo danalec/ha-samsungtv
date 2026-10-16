@@ -1,6 +1,8 @@
 # AGENTS.md
 
-Home Assistant custom integration (`samsungtv_custom`) that controls Samsung TVs from 2016 onward. HACS-distributed, config-flow based, and a continuation of [SamsungTV Smart](https://github.com/ollo69/ha-samsungtv-smart), which is itself a fork of [SamsungTV Tizen](https://github.com/jaruba/ha-samsungtv-tizen).
+Home Assistant custom integration (`samsungtv_custom`) that controls Samsung TVs, including 2021+ models. HACS-distributed, config-flow based.
+
+**The integration core is taken from `home-assistant/core` (`components/samsungtv`, `quality_scale: gold`) and adapted to the `samsungtv_custom` domain.** Read that upstream before changing the protocol layer — it is the source of truth, not this repo.
 
 ## Setup commands
 
@@ -10,67 +12,69 @@ No build system and no lockfile. This is a plain Python component copied into a 
 - Lint: `ruff check custom_components/samsungtv_custom` (config in `ruff.toml`)
 - Verification scripts: `python scripts/verify_smartthings.py`, `scripts/verify_keychain.py`, `scripts/verify_imports.py`
 - Manifest/strings validation: CI runs `home-assistant/actions/hassfest` on every push and PR
-- Dev install: copy (or symlink) `custom_components/samsungtv_custom/` into `<config>/custom_components/samsungtv_custom/` of your HA installation
+- Dev install: copy (or symlink) `custom_components/samsungtv_custom/` into `<config>/custom_components/samsungtv_custom/`
+
+**Python 3.14.2+ and Home Assistant 2026.10+ are required.** This is not a preference: the bridge inherited from core uses PEP 649 (lazy annotations) and PEP 758 (`except A, B:` without parentheses), both of which only parse on 3.14+. `ruff.toml` targets `py314` for the same reason. Do not lower `__min_ha_version__` in `const.py` without re-checking the bridge.
 
 ## Project layout
 
-- `custom_components/samsungtv_custom/__init__.py` — setup/unload, entry lifecycle, logo static paths
-- `custom_components/samsungtv_custom/config_flow.py` — UI setup, reconfigure and the options flow
-- `custom_components/samsungtv_custom/const.py` — every `CONF_*`, defaults, result codes, `DOMAIN`
-- `custom_components/samsungtv_custom/media_player.py` — the media player entity, chained keys, entity services
-- `custom_components/samsungtv_custom/remote.py` — the `remote` platform entity
-- `custom_components/samsungtv_custom/entity.py` — `SamsungTVEntity` base: `DeviceInfo`, `unique_id`, MAC connection
-- `custom_components/samsungtv_custom/api/` — protocol layer: `samsungws.py` (websocket + polling thread), `smartthings.py` (cloud API), `samsungcast.py` (cast), `upnp.py`, `shortcuts.py`
-- `custom_components/samsungtv_custom/logo.py` + `logo_paths.json` — channel/app logo resolution
-- `custom_components/samsungtv_custom/diagnostics.py` — download diagnostics
-- `custom_components/samsungtv_custom/strings.json` — source of truth for config/options/service strings
-- `custom_components/samsungtv_custom/translations/` — `en`, `hu`, `it`, `pt-BR`; `en.json` mirrors `strings.json`
+- `__init__.py` — entry lifecycle, bridge creation, SSDP location updates, debounced reload
+- `bridge.py` — protocol layer from core: `legacy` (55000), `websocket` (8001/8002), `encrypted` (8000, 2021+ TVs)
+- `coordinator.py` — `DataUpdateCoordinator`; every entity reads from `entry.runtime_data`
+- `entity.py` — `SamsungTVEntity` base: `DeviceInfo`, `unique_id`
+- `config_flow.py` — UI setup, reauth, reconfigure, encrypted PIN pairing
+- `media_player.py` — media player entity, plus this repo's `send_key` media type and chained keys
+- `remote.py` — the `remote` platform entity
+- `device_trigger.py`, `trigger.py` — device automation for turn on/off
+- `helpers.py` — shared helpers
+- `diagnostics.py` — download diagnostics
+- `strings.json` — source of truth for config/exceptions/trigger strings
+- `quality_scale.yaml` — honest rule-by-rule status; see Testing for why it is silver
 - `docs/` — `App_list.md`, `Key_chaining.md`, `Key_codes.md`, `Smartthings.md`
+
+### Not wired up yet
+
+`api/smartthings.py`, `api/samsungcast.py`, `api/shortcuts.py`, `logo.py` and `logo_paths.json` are carried over from the previous base and are **currently not imported by any module**. They hold the SmartThings cloud integration, channel/app logos, picture mode and art mode. Re-wiring them against the bridge/coordinator model is the next substantial piece of work; until then they are dead weight in the release payload and the corresponding options are not offered.
 
 ## Architecture notes
 
-Protocol and platform selection happen in exactly two places:
-
-- `__init__.py` — `SAMSMART_PLATFORM = [Platform.MEDIA_PLAYER, Platform.REMOTE]`, forwarded on every entry setup
-- `media_player.py` — the `SamsungTVWS` object is the single communication handle; SmartThings (`self._st`) is optional and layered on top
-
-Two polling mechanisms coexist and must not be confused:
-
-- `api/samsungws.py` runs a **dedicated `threading.Thread`** for connection keepalive. `time.sleep` there is correct and must not be converted to `asyncio.sleep`.
-- `media_player.py` polls from the event loop. Its blocking `send_command` is deliberately offloaded with `hass.async_add_executor_job`, which is why `SamsungTVWS` can stay synchronous.
-
-A change to key sending or power handling usually needs the same edit in `_check_status`, `_async_power_on` and `_async_wait_for_power_on` — they share the SmartThings state and are not independent.
+- One communication handle: `SamsungTVBridge`, obtained via `SamsungTVBridge.get_bridge(...)` in `__init__.py` and stored on the coordinator. Entities never talk to the protocol directly.
+- State flows one way: coordinator polls the bridge, entities read `coordinator.data` and are notified through `_handle_coordinator_update`. Do not add a second polling path.
+- `PARALLEL_UPDATES = 0` in `media_player.py`: entities must not run their own concurrent updates.
+- Key sending goes through `_async_send_keys(keys: list[str])`, which enforces the power-off-in-progress guard. Chained keys build on top of it via `_async_send_key_chain`.
+- Discovery populates the SSDP locations consumed by UPnP volume/mute; without discovery those features degrade.
 
 ## Code style
 
-- Match Home Assistant core conventions: 4-space indent, double quotes, type hints, `_LOGGER = logging.getLogger(__name__)` per module
-- Use `MediaPlayerEntityFeature` — **never** the removed `SUPPORT_*` constants, which is why this fork pinned `homeassistant: 0.90.0` and could not load on modern HA
-- `CONF_*` keys are plain lowercase strings declared in `const.py`; do not import new ones from `homeassistant.const`
-- Every user-visible string goes in `strings.json` first, then `translations/en.json`, then the other locales
-- The TV token is cached under `hass.config.path(STORAGE_DIR, ...)`, **not** in the component folder — never reintroduce a token file in the repo
+- Match Home Assistant core conventions: 4-space indent, double quotes, `@override` on entity interface methods, `LOGGER = logging.getLogger(__package__)` from `const.py`
+- Every user-visible string goes in `strings.json`. **Core's `[%key:component::samsungtv::...%]` and `[%key:common::...%]` references do not resolve in a custom component** — the values must be literals
+- Use `MediaPlayerEntityFeature`, never the removed `SUPPORT_*` constants
+- The TV token is cached under `hass.config.path(STORAGE_DIR, ...)`; never reintroduce a token file in the repo
 
 ## Testing instructions
 
-There is no automated test suite, because Home Assistant is not a dev dependency of this repo. Three standalone scripts verify the pure parsing logic **without installing HA** — they extract the real functions from the source with `ast`, so they test shipped code rather than a copy:
+There is no pytest-homeassistant suite, which is precisely why `quality_scale.yaml` declares **silver and not gold**: `test-before-setup`, `test-before-configure`, `test-coverage` and `config-flow-test-coverage` are all marked `todo` there. Do not raise the level without the tests to back it.
+
+Home Assistant is not a dev dependency, so three standalone scripts verify the pure parsing logic **without installing HA** — they extract the real functions from the source with `ast`, so they test shipped code rather than a copy:
 
 - `python scripts/verify_smartthings.py` — SmartThings switch/volume/json-list parsing, full type matrix
-- `python scripts/verify_keychain.py` — chained key parsing, delays and the `ST_` SmartThings routing
+- `python scripts/verify_keychain.py` — chained key parsing, delay clamping
 - `python scripts/verify_imports.py` — no orphaned imports or module constants after a patch
 
 Run all three plus `ruff` and `compileall` before opening a PR. Beyond that, validation is manual:
 
 - Install into a HA instance, add the integration from the UI, then check the log for the entry being set up and for `media_player`/`remote` entities appearing
-- Exercise key chaining end to end: `KEY_SOURCES+500+KEY_ENTER` must open the source menu, and `KEY_EXIT+KEY_EXIT+500+KEY_EXIT` must confirm dialogs
-- SmartThings changes need care: `api/smartthings.py` drives **power state** from `_switch_value_to_state`, never from device health. Health is diagnostics only. Anything unrecognized must fall back to OFF, never ON
+- Exercise key chaining end to end: `KEY_SOURCES+500+KEY_ENTER` must open the source menu
+- For a 2021+ TV the entry must settle on the `encrypted` method on port 8000; a `legacy` fallback there means the model was not detected and the TV will refuse keys
 
 ## PR & commit conventions
 
 - Branch from `master`; never push directly to it
 - Conventional commits (`feat:` / `fix:` / `docs:` / `refactor:` / `chore:`) — single line subject, imperative
-- Upstream-first: fixes that originate in a sibling fork or in HA core should be sent upstream too. The SmartThings power-state fixes came from the `teichsta/ha-samsungtv` fork
+- Upstream-first: fixes that belong in the bridge belong in `home-assistant/core`. Anything else that originates in a sibling fork should be sent there too
 
 ## Security
 
-- Never commit secrets. SmartThings API keys live in the HA config entry; logos may be served from `custom_components/samsungtv_custom/www/`
-- Do not commit `.pyc` files. Some are still tracked from the pre-4.0 layout; removing them is a separate cleanup change
-- TV control ports (`8001`/`8002`, `55000`) are LAN-only — do not add code that binds or proxies to the public internet
+- Never commit secrets. The TV token is obtained through the config flow and stored by HA
+- Do not commit `.pyc` files
+- TV control ports are LAN-only — do not add code that binds or proxies to the public internet

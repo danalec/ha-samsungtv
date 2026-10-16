@@ -2,6 +2,7 @@
 import ast
 import asyncio
 import sys
+import time
 import types
 import pathlib
 
@@ -16,7 +17,7 @@ cls = next(
 target = next(
     n
     for n in cls.body
-    if isinstance(n, ast.AsyncFunctionDef) and n.name == "_async_send_keys"
+    if isinstance(n, ast.AsyncFunctionDef) and n.name == "_async_send_key_chain"
 )
 
 # constants the parser closes over, read from the real module
@@ -30,14 +31,10 @@ for node in tree.body:
                 except (ValueError, TypeError):
                     pass
 
-ns = {
-    "asyncio": asyncio,
-    "STStatus": types.SimpleNamespace(STATE_ON="ON"),
-    **{k: v for k, v in consts.items() if "KEYPRESS" in k or "ST_" in k},
-}
+ns = {"asyncio": asyncio, **{k: v for k, v in consts.items() if "KEYPRESS" in k}}
 exec(compile(ast.Module(body=[target], type_ignores=[]), str(SRC), "exec"), ns)
 
-send_keys = ns["_async_send_keys"]
+send_chain = ns["_async_send_key_chain"]
 
 
 class Entity:
@@ -45,30 +42,22 @@ class Entity:
 
     def __init__(self):
         self.sent = []
-        self.st_calls = []
 
-    async def async_send_command(self, key):
-        self.sent.append(key)
-        return True
-
-    async def _smartthings_keys(self, key):
-        self.st_calls.append(key)
+    async def _async_send_keys(self, keys):
+        self.sent.append(keys[0])
 
 
 entity = Entity()
-send_keys.__get__(entity)
+send_chain.__get__(entity)
 
 failures = []
 
 
 async def run(chain):
     entity.sent.clear()
-    entity.st_calls.clear()
-    t0 = asyncio.get_event_loop().time() if False else None
-    import time
     start = time.monotonic()
-    result = await send_keys(entity, chain)
-    return entity.sent[:], entity.st_calls[:], result, time.monotonic() - start
+    await send_chain(entity, chain)
+    return entity.sent[:], time.monotonic() - start
 
 
 def check(label, got, expected):
@@ -83,33 +72,33 @@ async def main():
         print("    {} = {!r}".format(const, ns.get(const)))
     print()
 
-    sent, st, res, _ = await run("KEY_HOME")
-    check("single key", (sent, res), (["KEY_HOME"], True))
+    sent, el = await run("KEY_HOME")
+    check("single key", (sent, round(el, 2)), (["KEY_HOME"], 0.0))
 
-    sent, st, res, el = await run("KEY_HOME+KEY_EXIT")
+    sent, el = await run("KEY_HOME+KEY_EXIT")
     check(
         "two keys get KEYPRESS_DEFAULT_DELAY",
         (len(sent), round(el, 2)),
         (2, round(ns["KEYPRESS_DEFAULT_DELAY"], 2)),
     )
 
-    sent, st, res, el = await run("KEY_SOURCES+500+KEY_ENTER")
+    sent, el = await run("KEY_SOURCES+500+KEY_ENTER")
     check("explicit delay honoured", (sent, round(el, 2)), (["KEY_SOURCES", "KEY_ENTER"], 0.5))
 
-    sent, st, res, el = await run("KEY_SOURCES+50+KEY_ENTER")
-    check("tiny delay clamped to min", round(el, 2) >= round(ns["KEYPRESS_MIN_DELAY"], 2), True)
+    sent, el = await run("KEY_SOURCES+10+KEY_ENTER")
+    check("tiny delay clamped to min", round(el, 2), round(ns["KEYPRESS_MIN_DELAY"], 2))
 
-    sent, st, res, el = await run("KEY_SOURCES+99999+KEY_ENTER")
+    sent, el = await run("KEY_SOURCES+99999+KEY_ENTER")
     check("huge delay clamped to max", round(el, 2), round(ns["KEYPRESS_MAX_DELAY"], 2))
 
-    sent, st, res, _ = await run("ST_TV")
-    check("ST_ prefix routes to SmartThings", (sent, st), ([], ["ST_TV"]))
+    sent, el = await run("KEY_TV+")
+    check("trailing plus sends nothing extra", sent, ["KEY_TV"])
 
-    sent, st, res, _ = await run("KEY_EXIT+ST_TV")
-    check("mixed chain splits correctly", (sent, st), (["KEY_EXIT"], ["ST_TV"]))
+    sent, el = await run(" KEY_TV + 100 + KEY_ENTER ")
+    check("whitespace tolerated", sent, ["KEY_TV", "KEY_ENTER"])
 
-    sent, st, res, _ = await run("KEY_HOME+KEY_EXIT+KEY_ENTER")
-    check("three keys", sent, ["KEY_HOME", "KEY_EXIT", "KEY_ENTER"])
+    sent, el = await run("KEY_EXIT+KEY_EXIT+KEY_ENTER")
+    check("three keys", sent, ["KEY_EXIT", "KEY_EXIT", "KEY_ENTER"])
 
     print()
     if failures:

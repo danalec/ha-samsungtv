@@ -1,49 +1,85 @@
 """Base SamsungTV Entity."""
 
-from __future__ import annotations
+from typing import Any, override
 
-from typing import Any
+from homeassistant.const import CONF_HOST, CONF_MAC, CONF_MODEL
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.trigger import PluggableAction
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from homeassistant.const import (
-    ATTR_CONNECTIONS,
-    ATTR_IDENTIFIERS,
-    ATTR_SW_VERSION,
-    CONF_HOST,
-    CONF_ID,
-    CONF_MAC,
-    CONF_NAME,
-)
-from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
-from homeassistant.helpers.entity import DeviceInfo, Entity
-
-from .const import CONF_DEVICE_MODEL, CONF_DEVICE_NAME, CONF_DEVICE_OS, DOMAIN
+from .const import CONF_MANUFACTURER, DOMAIN, LOGGER
+from .coordinator import SamsungTVDataUpdateCoordinator
+from .triggers.turn_on import async_get_turn_on_trigger
 
 
-class SamsungTVEntity(Entity):
+class SamsungTVEntity(CoordinatorEntity[SamsungTVDataUpdateCoordinator], Entity):
     """Defines a base SamsungTV entity."""
 
     _attr_has_entity_name = True
 
-    def __init__(self, config: dict[str, Any], entry_id: str) -> None:
-        """Initialize the class."""
-        self._name = config.get(CONF_NAME, config[CONF_HOST])
-        self._mac = config.get(CONF_MAC)
-        self._attr_unique_id = config.get(CONF_ID, entry_id)
-
-        model = config.get(CONF_DEVICE_MODEL, "Samsung TV")
-        if dev_name := config.get(CONF_DEVICE_NAME):
-            model = f"{model} ({dev_name})"
-
+    def __init__(self, *, coordinator: SamsungTVDataUpdateCoordinator) -> None:
+        """Initialize the SamsungTV entity."""
+        super().__init__(coordinator)
+        self._bridge = coordinator.bridge
+        config_entry = coordinator.config_entry
+        self._mac: str | None = config_entry.data.get(CONF_MAC)
+        self._host: str | None = config_entry.data.get(CONF_HOST)
+        # Fallback for legacy models that doesn't have a API
+        # to retrieve MAC or SerialNumber
+        self._attr_unique_id = config_entry.unique_id or config_entry.entry_id
         self._attr_device_info = DeviceInfo(
-            manufacturer="Samsung Electronics",
-            model=model,
-            name=self._name,
+            manufacturer=config_entry.data.get(CONF_MANUFACTURER),
+            model_id=config_entry.data.get(CONF_MODEL),
         )
         if self.unique_id:
-            self._attr_device_info[ATTR_IDENTIFIERS] = {(DOMAIN, self.unique_id)}
-        if dev_os := config.get(CONF_DEVICE_OS):
-            self._attr_device_info[ATTR_SW_VERSION] = dev_os
+            self._attr_device_info.identifiers = {(DOMAIN, self.unique_id)}
         if self._mac:
-            self._attr_device_info[ATTR_CONNECTIONS] = {
-                (CONNECTION_NETWORK_MAC, self._mac)
+            self._attr_device_info.connections = {
+                (dr.CONNECTION_NETWORK_MAC, self._mac)
             }
+        self._turn_on_action = PluggableAction(self.async_write_ha_state)
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Return the availability of the device."""
+        if not super().available or self._bridge.auth_failed:
+            return False
+        return (
+            self.coordinator.is_on
+            or bool(self._turn_on_action)
+            or self._mac is not None
+            or self._bridge.power_off_in_progress
+        )
+
+    @override
+    async def async_added_to_hass(self) -> None:
+        """Connect and subscribe to dispatcher signals and state updates."""
+        await super().async_added_to_hass()
+
+        if (entry := self.registry_entry) and entry.device_id:
+            self.async_on_remove(
+                self._turn_on_action.async_register(
+                    self.hass, async_get_turn_on_trigger(entry.device_id)
+                )
+            )
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn the device off."""
+        await self._bridge.async_power_off()
+        await self.coordinator.async_refresh()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn the remote on."""
+        if self._turn_on_action:
+            LOGGER.debug("Attempting to turn on %s via automation", self.entity_id)
+            await self._turn_on_action.async_run(self.hass, self._context)
+            return
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="service_unsupported",
+            translation_placeholders={"entity": self.entity_id},
+        )
