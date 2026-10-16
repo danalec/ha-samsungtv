@@ -1,0 +1,21 @@
+select_picture_mode:
+  translation_key: select_picture_mode
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: samsungtv_custom
+    picture_mode:
+      required: true
+      selector:
+        text:
+
+set_art_mode:
+  translation_key: set_art_mode
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: samsungtv_custom

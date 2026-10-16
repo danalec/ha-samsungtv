@@ -1,0 +1,145 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Essa TV Samsung já está configurada.",
+      "already_in_progress": "A configuração da TV Samsung já está em andamento.",
+      "host_unique_id": "Não é possível reconfigurar porque o nome de host é usado como ID único. Remova esta entrada e configure uma nova.",
+      "reconfigure_successful": "Reconfiguração da TV Samsung concluída com sucesso.",
+      "unsupported_version": "Esta integração requer pelo menos a versão {req_ver} do Home Assistant; você está executando a versão {run_ver}."
+    },
+    "error": {
+      "auth_missing": "O Home Assistant não está autorizado a se conectar a essa TV Samsung. Verifique as configurações da sua TV para autorizar o Home Assistant.",
+      "invalid_host": "Host inválido.",
+      "not_successful": "Não foi possível criar uma conexão WebSocket com essa TV Samsung.",
+      "not_supported": "Essa TV Samsung não é compatível no momento.",
+      "only_key_or_st": "Informe somente o token de acesso ou a entrada do SmartThings.",
+      "st_api_key_fail": "Falha ao obter o token de acesso da entrada do SmartThings.",
+      "st_device_not_found": "ID de TV do SmartThings não encontrado.",
+      "st_device_used": "Esse ID de TV do SmartThings já está em uso.",
+      "wrong_api_key": "Token do SmartThings inválido."
+    },
+    "flow_title": "SamsungTV Custom: {model}",
+    "step": {
+      "confirm": {
+        "description": "Deseja configurar a TV Samsung {model}? Se você nunca conectou o Home Assistant antes, verá um pop-up na TV solicitando uma autorização. As configurações manuais desta TV serão substituídas."
+      },
+      "user": {
+        "data": {
+          "host": "Host ou endereço IP",
+          "name": "Nome atribuído à entidade",
+          "use_ha_name_for_ws": "Usar o nome da instância do HA para identificação na TV",
+          "api_key": "Token gerado pelo SmartThings (opcional)",
+          "st_entry_unique_id": "Entrada do SmartThings usada para fornecer a credencial"
+        },
+        "description": "Insira as informações da sua TV Samsung. O SmartThings é opcional, mas é fortemente recomendado.\nDepois de confirmar, você verá um pop-up na TV solicitando uma autorização."
+      },
+      "reconfigure": {
+        "data": {
+          "host": "Host ou endereço IP",
+          "api_key": "Token gerado pelo SmartThings (opcional; se vazio, mantém o atual)",
+          "st_entry_unique_id": "Entrada do SmartThings usada para fornecer a credencial"
+        },
+        "description": "Insira as informações da TV Samsung para atualizar. A configuração do SmartThings pode ser alterada, mas não removida.\nDepois de confirmar, você pode ver um pop-up na TV solicitando uma autorização."
+      },
+      "stdevice": {
+        "data": {
+          "st_devices": "TV do SmartThings"
+        },
+        "description": "Você tem várias TVs configuradas na sua conta. Selecione na lista a TV que está configurando."
+      },
+      "stdeviceid": {
+        "data": {
+          "device_id": "ID de TV do SmartThings"
+        },
+        "description": "A detecção automática do deviceID do SmartThings falhou. Para continuar, você precisa identificar o deviceID no site do SmartThings (consulte a documentação) e informá-lo aqui."
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opções do SamsungTV Custom",
+        "data": {
+          "use_st_status_info": "Usar as informações de status da TV do SmartThings",
+          "use_st_channel_info": "Usar as informações de canais da TV do SmartThings",
+          "show_channel_number": "Usar as informações de número dos canais da TV do SmartThings",
+          "app_load_method": "Modo de carregamento da lista de aplicativos na inicialização",
+          "logo_option": "Exibir um logotipo para fontes, aplicativos e canais conhecidos",
+          "use_local_logo": "Permitir o uso de imagens de logotipo locais",
+          "power_on_method": "Método usado para ligar a TV",
+          "show_adv_opt": "Mostrar o menu de opções"
+        }
+      },
+      "menu": {
+        "title": "Menu de opções do SamsungTV Custom",
+        "menu_options": {
+          "adv_opt": "Opções avançadas",
+          "app_list": "Configuração da lista de aplicativos",
+          "channel_list": "Configuração da lista de canais",
+          "init": "Opções padrão",
+          "save_exit": "Salvar opções e sair",
+          "source_list": "Configuração da lista de fontes",
+          "sync_ent": "Configuração de entidades sincronizadas"
+        }
+      },
+      "adv_opt": {
+        "title": "Opções avançadas do SamsungTV Custom",
+        "data": {
+          "app_launch_method": "Método usado para abrir aplicativos",
+          "dump_apps": "Registrar a lista de aplicativos no log na inicialização (quando possível)",
+          "use_mute_check": "Usar o status de volume mudo para detectar uma falsa condição de LIGADA",
+          "wol_repeat": "Número de vezes que o pacote WOL é enviado para ligar a TV",
+          "power_on_delay": "Segundos de atraso no status de LIGADA",
+          "ping_port": "Porta TCP usada para verificar o status de energia (0 para ICMP)",
+          "ext_power_entity": "Sensor binário auxiliar para detectar o status de energia",
+          "toggle_art_mode": "Botão de energia alterna para o modo arte (somente TVs Frame)"
+        }
+      },
+      "sync_ent": {
+        "title": "Entidades sincronizadas do SamsungTV Custom",
+        "data": {
+          "sync_turn_off": "Lista de entidades para desligar junto com a TV",
+          "sync_turn_on": "Lista de entidades para ligar junto com a TV"
+        }
+      },
+      "app_list": {
+        "title": "Configuração da lista de aplicativos do SamsungTV Custom",
+        "data": {
+          "app_list": "Lista de aplicativos:"
+        }
+      },
+      "channel_list": {
+        "title": "Configuração da lista de canais do SamsungTV Custom",
+        "data": {
+          "channel_list": "Lista de canais:"
+        }
+      },
+      "source_list": {
+        "title": "Configuração da lista de fontes do SamsungTV Custom",
+        "data": {
+          "source_list": "Lista de fontes:"
+        }
+      }
+    },
+    "error": {
+      "invalid_tv_list": "Formato inválido. Consulte a documentação."
+    }
+  },
+  "services": {
+    "select_picture_mode": {
+      "name": "Selecionar modo de imagem",
+      "description": "Envia à TV Samsung o comando para alterar o modo de imagem.",
+      "fields": {
+        "picture_mode": {
+          "name": "Modo de imagem",
+          "description": "Nome do modo de imagem para o qual alternar. As opções possíveis podem ser encontradas no atributo de estado picture_mode_list."
+        }
+      }
+    },
+    "set_art_mode": {
+      "name": "Definir modo arte",
+      "description": "Envia à TV Samsung o comando para ativar o modo arte.",
+      "fields": {}
+    }
+  }
+}
