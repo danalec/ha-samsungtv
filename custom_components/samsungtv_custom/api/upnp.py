@@ -44,15 +44,14 @@ class SamsungUPnP:
                     </s:Body>
                 </s:Envelope>"""
         try:
-            async with async_timeout.timeout(timeout):
-                async with self._session.post(
-                    f"http://{self._host}:9197/upnp/control/{protocole}1",
-                    headers=headers,
-                    data=body,
-                    raise_for_status=True,
-                ) as resp:
-                    response = await resp.content.read()
-                    self._connected = True
+            async with async_timeout.timeout(timeout), self._session.post(
+                f"http://{self._host}:9197/upnp/control/{protocole}1",
+                headers=headers,
+                data=body,
+                raise_for_status=True,
+            ) as resp:
+                response = await resp.content.read()
+                self._connected = True
         except Exception as exc:  # pylint: disable=broad-except
             _LOGGER.debug(exc)
             self._connected = False

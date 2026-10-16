@@ -7,7 +7,6 @@ from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 import logging
-from socket import error as socketError
 from time import sleep
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -277,7 +276,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         self._started_up = False
         self._end_of_power_off = None
         self._fake_on = None
-        
+
         # Power on lock to prevent multiple simultaneous power-on attempts
         self._power_on_in_progress = False
         self._power_on_start_time = None
@@ -510,7 +509,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         """Check if power on is still in progress (with timeout)."""
         if not self._power_on_in_progress:
             return False
-        
+
         # Check if we've exceeded the max wait time
         if self._power_on_start_time:
             elapsed = dt_util.utcnow() - self._power_on_start_time
@@ -522,12 +521,12 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 )
                 self._power_on_in_progress = False
                 return False
-        
+
         return True
 
     async def _async_wait_for_power_on(self, max_wait: timedelta = POWER_ON_MAX_WAIT):
         """Wait for TV to power on and SmartThings to confirm it.
-        
+
         NOTE: This does NOT make additional API calls! Instead, it waits for the normal
         polling cycle (async_update) to fetch the latest status from SmartThings.
         The polling respects the 5-second API rate limit automatically.
@@ -538,23 +537,23 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             _LOGGER.debug("%s - No SmartThings configured, skipping power-on confirmation wait", self.entity_id)
             await asyncio.sleep(3)
             return True
-        
+
         start_time = dt_util.utcnow()
         check_interval = 0.5  # Check the already-polled state every 500ms
         last_logged_state = self._st.state
         check_count = 0
-        
+
         _LOGGER.debug(
             "%s - Starting power-on wait: initial ST state=%s, max wait=%s seconds",
             self.entity_id,
             self._st.state,
             max_wait.total_seconds(),
         )
-        
+
         while True:
             elapsed = dt_util.utcnow() - start_time
             check_count += 1
-            
+
             if elapsed > max_wait:
                 _LOGGER.warning(
                     "%s - Power on timeout after %.1f seconds (checked %d times). Final ST state=%s",
@@ -564,7 +563,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     self._st.state,
                 )
                 return False
-            
+
             # Just check the already-polled SmartThings state (no API call)
             # The polling cycle (async_update) handles API calls with proper rate-limiting
             current_state = self._st.state
@@ -577,7 +576,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     current_state,
                 )
                 last_logged_state = current_state
-            
+
             if current_state == STStatus.STATE_ON:
                 _LOGGER.info(
                     "%s - TV powered on successfully (confirmed by SmartThings after %.1f seconds, %d checks)",
@@ -586,7 +585,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     check_count,
                 )
                 return True
-            
+
             # Wait before checking again - but don't make our own API calls
             # Let the normal polling cycle (SCAN_INTERVAL = 15 seconds) get the latest state
             await asyncio.sleep(check_interval)
@@ -620,7 +619,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             if self._st.state == STStatus.STATE_OFF:
                 _LOGGER.debug("SmartThings reports TV is OFF, status check returns False")
                 return False
-            elif self._st.state == STStatus.STATE_ON:
+            if self._st.state == STStatus.STATE_ON:
                 _LOGGER.debug("SmartThings reports TV is ON")
                 # SmartThings says ON, trust it
                 return True
@@ -1283,7 +1282,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             try:
                 send_magic_packet(self._mac, ip_address=ip_address)
                 send_success = True
-            except socketError as exc:
+            except OSError as exc:
                 _LOGGER.warning(
                     "Failed tentative n.%s to send WOL packet: %s",
                     i,
@@ -1331,7 +1330,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             self._state = MediaPlayerState.OFF
             self._end_of_power_off = None
             self._ws.set_power_on_request(set_art_mode)
-            
+
             # Force a fresh SmartThings update immediately to get baseline state
             # This bypasses the throttle to ensure we have current data before waiting
             if self._st:
@@ -1341,7 +1340,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                         await self._st.async_device_update(self._use_channel_info)
                 except Exception as ex:
                     _LOGGER.debug("%s - Fresh ST update failed: %s", self.entity_id, ex)
-            
+
             # Wait for SmartThings to confirm the TV is on
             # This prevents the UI from showing "on" too early for deep-standby devices
             if self._st:
@@ -1366,7 +1365,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
     async def async_turn_on(self):
         """Turn the media player on.
-        
+
         Prevents multiple simultaneous power-on attempts by using a lock.
         If power-on is already in progress, this call returns immediately without doing anything.
         """
@@ -1377,11 +1376,11 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 self.entity_id,
             )
             return
-        
+
         # Set the lock and start time
         self._power_on_in_progress = True
         self._power_on_start_time = dt_util.utcnow()
-        
+
         try:
             await self._async_turn_on()
         finally:
@@ -1824,13 +1823,13 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     async def async_select_sound_mode(self, sound_mode):
         """Select sound mode."""
         if not self._st:
-            raise NotImplementedError()
+            raise NotImplementedError
         await self._st.async_set_sound_mode(sound_mode)
 
     async def async_select_picture_mode(self, picture_mode):
         """Select picture mode."""
         if not self._st:
-            raise NotImplementedError()
+            raise NotImplementedError
         await self._st.async_set_picture_mode(picture_mode)
 
     async def _async_switch_entity(self, power_on: bool):

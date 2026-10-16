@@ -370,7 +370,7 @@ class SamsungTVWS:
         """Get current token."""
         if self.token_file is not None:
             try:
-                with open(self.token_file, "r", encoding="utf-8") as token_file:
+                with open(self.token_file, encoding="utf-8") as token_file:
                     return token_file.readline()
             except Exception as exc:  # pylint: disable=broad-except
                 _LOGGING.error("Failed to read TV token file: %s", str(exc))
@@ -828,9 +828,7 @@ class SamsungTVWS:
             return
 
         if self._power_on_requested and artmode_status != ArtModeStatus.Unavailable:
-            if artmode_status == ArtModeStatus.On and not self._power_on_artmode:
-                self.send_key("KEY_POWER", key_press_delay=0)
-            elif artmode_status == ArtModeStatus.Off and self._power_on_artmode:
+            if artmode_status == ArtModeStatus.On and not self._power_on_artmode or artmode_status == ArtModeStatus.Off and self._power_on_artmode:
                 self.send_key("KEY_POWER", key_press_delay=0)
             self._power_on_requested = False
 

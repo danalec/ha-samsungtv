@@ -38,7 +38,7 @@ class SamsungCastTube:
             _LOGGER.warning(
                 "Failed to retrieve YouTube screenID for host %s: %s", host, exc
             )
-            raise CastTubeNotSupported() from exc
+            raise CastTubeNotSupported from exc
 
         screen_id = None
         tree = ET.fromstring(response.content.decode("utf8"))
@@ -49,7 +49,7 @@ class SamsungCastTube:
 
         if screen_id is None:
             _LOGGER.warning("Failed to retrieve YouTube screenID for host %s", host)
-            raise CastTubeNotSupported()
+            raise CastTubeNotSupported
 
         return screen_id
 

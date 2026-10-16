@@ -255,7 +255,7 @@ class Logo:
             return
 
         try:
-            async with aiofiles.open(logo_file, "r") as f:
+            async with aiofiles.open(logo_file) as f:
                 image_paths = json.loads(await f.read())
         except Exception as exc:  # pylint: disable=broad-except
             _LOGGER.warning("Failed to read logo paths file %s: %s", logo_file, exc)

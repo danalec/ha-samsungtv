@@ -132,6 +132,52 @@ class STStatus(Enum):
     STATE_UNKNOWN = 2
 
 
+def _switch_value_to_state(value):
+    """Convert a SmartThings switch component value into a power state.
+
+    SmartThings reports the value as a string on some platforms and as a
+    boolean on others. Anything unrecognized falls back to OFF, because
+    reporting a TV as off is safer than reporting it as on.
+    """
+    if isinstance(value, bool):
+        return STStatus.STATE_ON if value else STStatus.STATE_OFF
+
+    if isinstance(value, str):
+        normalized = value.lower().strip()
+        if normalized == "on":
+            return STStatus.STATE_ON
+        if normalized == "off":
+            return STStatus.STATE_OFF
+        if not normalized:
+            _LOGGER.debug("SmartThings switch value is empty, defaulting to OFF")
+            return STStatus.STATE_OFF
+        _LOGGER.warning(
+            "SmartThings switch value unexpected: %s, defaulting to OFF", value
+        )
+        return STStatus.STATE_OFF
+
+    _LOGGER.warning(
+        "SmartThings switch value has unknown type: %s, defaulting to OFF", type(value)
+    )
+    return STStatus.STATE_OFF
+
+
+def _volume_value_to_ratio(value):
+    """Convert a SmartThings volume value (0..100) into a 0..1 ratio.
+
+    SmartThings reports whole percentages, so a fractional value is truncated
+    rather than rounded. Returns 0.0 when the value cannot be read, rather than
+    raising, so a malformed payload cannot knock the entity to an unknown state.
+    """
+    try:
+        return int(value) / 100
+    except (TypeError, ValueError):
+        _LOGGER.debug(
+            "SmartThings volume is not numeric: %s (%s)", value, type(value)
+        )
+        return 0.0
+
+
 class SmartThingsTV:
     """Class to read status for TV registered in SmartThings cloud."""
 
@@ -272,7 +318,7 @@ class SmartThingsTV:
 
     def get_source_name(self, source_id: str) -> str:
         """Get source name based on source id."""
-        if not self._source_list_map:
+        if not self._source_list_map or not isinstance(source_id, str):
             return ""
         if source_id.upper() == DIGITAL_TV.upper():
             source_id = "dtv"
@@ -289,6 +335,8 @@ class SmartThingsTV:
         source_list = []
         for map_value in self._source_list_map:
             if source_id := map_value.get("id"):
+                if not isinstance(source_id, str):
+                    continue
                 if source_id.upper() == "DTV":
                     source_list.append(DIGITAL_TV)
                 else:
@@ -317,6 +365,9 @@ class SmartThingsTV:
         """Try load a list from string to json format."""
         load_list = []
         json_list = dev_data.get(list_name, {}).get("value")
+        if isinstance(json_list, list):
+            # the client already decoded it
+            return json_list
         if json_list:
             try:
                 load_list = json.loads(json_list)
@@ -429,9 +480,7 @@ class SmartThingsTV:
 
         _LOGGER.debug(health)
 
-        if health["state"] == "ONLINE":
-            return True
-        return False
+        return health["state"] == "ONLINE"
 
     async def async_device_update(self, use_channel_info: bool = None):
         """Query device status on SmartThing"""
@@ -475,35 +524,10 @@ class SmartThingsTV:
             )
 
             dev_data = data.get("main", {})
-            
+
             # Get actual power state from switch component (the real power status)
             device_switch = dev_data.get("switch", {}).get("switch", {}).get("value", "")
-            _LOGGER.debug("SmartThings switch raw value: %s (type: %s)", device_switch, type(device_switch))
-            
-            # Handle both string and boolean values
-            if isinstance(device_switch, bool):
-                self._state = STStatus.STATE_ON if device_switch else STStatus.STATE_OFF
-                _LOGGER.debug("SmartThings switch is boolean, state set to %s", self._state)
-            elif isinstance(device_switch, str):
-                device_switch_lower = device_switch.lower().strip()
-                if not device_switch_lower:
-                    # Empty string - default to OFF
-                    _LOGGER.debug("SmartThings switch value is empty, defaulting to OFF")
-                    self._state = STStatus.STATE_OFF
-                elif device_switch_lower == "on":
-                    self._state = STStatus.STATE_ON
-                    _LOGGER.debug("SmartThings state set to ON")
-                elif device_switch_lower == "off":
-                    self._state = STStatus.STATE_OFF
-                    _LOGGER.debug("SmartThings state set to OFF")
-                else:
-                    # Fallback if switch value is unexpected
-                    _LOGGER.warning("SmartThings switch value unexpected: %s, defaulting to OFF", device_switch)
-                    self._state = STStatus.STATE_OFF
-            else:
-                # Unknown type - default to OFF
-                _LOGGER.warning("SmartThings switch value has unknown type: %s, defaulting to OFF", type(device_switch))
-                self._state = STStatus.STATE_OFF
+            self._state = _switch_value_to_state(device_switch)
 
             # Skip rest if TV is OFF
             if self._state == STStatus.STATE_OFF:
@@ -512,12 +536,10 @@ class SmartThingsTV:
             # TV is ON - fetch additional info
             await self._device_refresh()
 
-            # Volume
+            # Volume. SmartThings reports component values as strings on some
+            # platforms and as numbers on others, so normalize before use.
             device_volume = dev_data.get("volume", {}).get("value", 0)
-            if device_volume and device_volume.isdigit():
-                self._volume = int(device_volume) / 100
-            else:
-                self._volume = 0
+            self._volume = _volume_value_to_ratio(device_volume)
 
             # Muted state
             device_muted = dev_data.get("mute", {}).get("value", "")
@@ -550,9 +572,11 @@ class SmartThingsTV:
             device_tv_chan = dev_data.get("tvChannel", {}).get("value", "")
             device_tv_chan_name = dev_data.get("tvChannelName", {}).get("value", "")
 
-            if device_source:
-                if device_source.upper() == DIGITAL_TV.upper():
-                    device_source = DIGITAL_TV
+            # A malformed source must not knock the whole entity to unknown:
+            # the power state above has already been resolved correctly.
+            device_source = device_source if isinstance(device_source, str) else ""
+            if device_source.upper() == DIGITAL_TV.upper():
+                device_source = DIGITAL_TV
             self._source = device_source
             # if the status is not refreshed this info may become not reliable
             if self._use_channel_info:
@@ -631,7 +655,7 @@ class SmartThingsTV:
         if self._state != STStatus.STATE_ON:
             return
         if mode not in self._sound_mode_list:
-            raise InvalidSmartThingsSoundMode()
+            raise InvalidSmartThingsSoundMode
         data_cmd = _command(COMMAND_SOUND_MODE, [mode])
         await self._async_send_command(data_cmd)
         self._sound_mode = mode
@@ -641,7 +665,7 @@ class SmartThingsTV:
         if self._state != STStatus.STATE_ON:
             return
         if mode not in self._picture_mode_list:
-            raise InvalidSmartThingsPictureMode()
+            raise InvalidSmartThingsPictureMode
         data_cmd = _command(COMMAND_PICTURE_MODE, [mode])
         await self._async_send_command(data_cmd)
         self._picture_mode = mode

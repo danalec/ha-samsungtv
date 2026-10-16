@@ -190,7 +190,7 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
         """Remove entry already used"""
         res_dev_list = devices_list.copy()
 
-        for dev_id in devices_list.keys():
+        for dev_id in devices_list:
             if self._stdev_already_used(dev_id):
                 res_dev_list.pop(dev_id)
         return res_dev_list

@@ -7,7 +7,8 @@ Home Assistant custom integration (`samsungtv_custom`) that controls Samsung TVs
 No build system and no lockfile. This is a plain Python component copied into a Home Assistant config directory; dependencies are declared in the manifest and installed by HA.
 
 - Byte-compile check: `python -m compileall -q custom_components/samsungtv_custom`
-- Lint (SOTA rule set): `ruff check --select E9,F,B custom_components/samsungtv_custom`
+- Lint: `ruff check custom_components/samsungtv_custom` (config in `ruff.toml`)
+- Verification scripts: `python scripts/verify_smartthings.py`, `scripts/verify_keychain.py`, `scripts/verify_imports.py`
 - Manifest/strings validation: CI runs `home-assistant/actions/hassfest` on every push and PR
 - Dev install: copy (or symlink) `custom_components/samsungtv_custom/` into `<config>/custom_components/samsungtv_custom/` of your HA installation
 
@@ -50,11 +51,17 @@ A change to key sending or power handling usually needs the same edit in `_check
 
 ## Testing instructions
 
-- There is no automated test suite. Do not add one implicitly in unrelated changes
-- Validate manually: install into a HA instance, add the integration from the UI, then check the log for the entry being set up and for `media_player`/`remote` entities appearing
+There is no automated test suite, because Home Assistant is not a dev dependency of this repo. Three standalone scripts verify the pure parsing logic **without installing HA** — they extract the real functions from the source with `ast`, so they test shipped code rather than a copy:
+
+- `python scripts/verify_smartthings.py` — SmartThings switch/volume/json-list parsing, full type matrix
+- `python scripts/verify_keychain.py` — chained key parsing, delays and the `ST_` SmartThings routing
+- `python scripts/verify_imports.py` — no orphaned imports or module constants after a patch
+
+Run all three plus `ruff` and `compileall` before opening a PR. Beyond that, validation is manual:
+
+- Install into a HA instance, add the integration from the UI, then check the log for the entry being set up and for `media_player`/`remote` entities appearing
 - Exercise key chaining end to end: `KEY_SOURCES+500+KEY_ENTER` must open the source menu, and `KEY_EXIT+KEY_EXIT+500+KEY_EXIT` must confirm dialogs
-- SmartThings changes need care: `api/smartthings.py` drives **power state** from the `switch.switch.value` component, never from device health. Health is diagnostics only
-- Run `ruff check --select E9,F,B` and `compileall` before opening a PR; CI runs hassfest, which validates `manifest.json` and `strings.json`
+- SmartThings changes need care: `api/smartthings.py` drives **power state** from `_switch_value_to_state`, never from device health. Health is diagnostics only. Anything unrecognized must fall back to OFF, never ON
 
 ## PR & commit conventions
 

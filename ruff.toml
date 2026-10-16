@@ -1,0 +1,39 @@
+# Based on home-assistant/core pyproject.toml, scoped to what this component
+# actually needs. The old top-level `select` form is rejected by ruff >= 0.2.
+
+target-version = "py310"
+
+[lint]
+select = [
+    "B007",  # loop control variable not used within the loop body
+    "B014",  # exception handler with duplicate exception
+    "C",     # complexity
+    "E",     # pycodestyle
+    "F",     # pyflakes
+    "PIE",   # misc lints
+    "RET",   # return statements
+    "RSE",   # raise statements
+    "SIM",   # simplifications
+    "UP",    # pyupgrade
+    "W",     # pycodestyle warnings
+]
+ignore = [
+    "E501",  # line length is handled by the formatter, not the linter
+    "E731",  # do not assign a lambda, use a def
+    "C901",  # this component has long but linear protocol handlers
+    "RET504",# named result makes the state machine easier to follow
+    "SIM102",# nested ifs mirror the protocol state machine
+    "SIM103",# an early return reads better than a negated compound condition
+    "SIM105",# explicit try/except/pass beats contextlib.suppress here
+    "SIM108",# if/else is clearer than a conditional expression here
+    "SIM113",# paths_checked bounds work done, it is not a loop index
+    "UP006", # keep typing.Dict style consistent with the vendored api modules
+    "UP035", # ditto
+    "UP045", # ditto
+]
+
+[lint.pyupgrade]
+keep-runtime-typing = true
+
+[lint.mccabe]
+max-complexity = 30

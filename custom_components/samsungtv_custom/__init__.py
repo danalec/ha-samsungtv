@@ -158,8 +158,8 @@ def tv_url(host: str, address: str = "") -> str:
 
 def is_min_ha_version(min_ha_major_ver: int, min_ha_minor_ver: int) -> bool:
     """Check if HA version at least a specific version."""
-    return MAJOR_VERSION > min_ha_major_ver or (
-        MAJOR_VERSION == min_ha_major_ver and MINOR_VERSION >= min_ha_minor_ver
+    return min_ha_major_ver < MAJOR_VERSION or (
+        min_ha_major_ver == MAJOR_VERSION and min_ha_minor_ver <= MINOR_VERSION
     )
 
 
@@ -231,7 +231,7 @@ def _migrate_token(hass: HomeAssistant, entry: ConfigEntry, hostname: str) -> No
             return
 
     try:
-        with open(token_file, "r", encoding="utf-8") as os_token_file:
+        with open(token_file, encoding="utf-8") as os_token_file:
             token = os_token_file.readline()
     except Exception as exc:  # pylint: disable=broad-except
         _LOGGER.error("Error reading token file %s: %s", token_file, str(exc))
@@ -390,11 +390,10 @@ async def _register_logo_paths(hass: HomeAssistant) -> str | None:
 async def get_device_info(hostname: str, session: ClientSession) -> dict:
     """Try retrieve device information"""
     try:
-        async with async_timeout.timeout(2):
-            async with session.get(
-                tv_url(host=hostname), raise_for_status=True
-            ) as resp:
-                info = await resp.json()
+        async with async_timeout.timeout(2), session.get(
+            tv_url(host=hostname), raise_for_status=True
+        ) as resp:
+            info = await resp.json()
     except (asyncio.TimeoutError, ClientConnectionError):
         _LOGGER.warning("Error getting HTTP device info for TV: %s", hostname)
         return {}
@@ -454,7 +453,7 @@ class SamsungTVInfo:
             return RESULT_NOT_SUCCESSFUL
 
         if self._ws_port and self._ws_token:
-            port_list = tuple([self._ws_port, 8001, 8002])
+            port_list = (self._ws_port, 8001, 8002)
         else:
             port_list = (8001, 8002)
 
