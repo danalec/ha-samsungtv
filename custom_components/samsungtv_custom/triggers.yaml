@@ -1,0 +1,12 @@
+# Describes the device trigger this integration registers, for the automation UI.
+#
+# Top-level keys must be an underscore_slug, which is what the validator
+# accepts, and the body may only carry `target` and `fields`.
+#
+# The trigger fires when an automation calls media_player.turn_on on the TV;
+# that is what the entity's async_turn_on uses to run an attached automation.
+# Registered by device_trigger.py, implemented by triggers/turn_on.py.
+turn_on:
+  target:
+    device:
+      integration: samsungtv_custom

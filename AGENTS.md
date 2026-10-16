@@ -11,7 +11,8 @@ No build system and no lockfile. This is a plain Python component copied into a 
 - Byte-compile check: `python -m compileall -q custom_components/samsungtv_custom`
 - Lint: `ruff check custom_components/samsungtv_custom` (config in `ruff.toml`, which requires ruff >= 0.16.10 — the same floor as upstream; `uvx ruff@0.16.10 check ...` runs it without installing)
 - Verification scripts: `python scripts/verify_keychain.py`, `python scripts/verify_imports.py`, `python scripts/verify_strings.py`, `python scripts/verify_repo.py`, `python scripts/verify_protocol.py`, `python scripts/verify_power.py`, `python scripts/verify_sources.py`
-- CI: `.github/workflows/hassfest.yaml` validates the manifest and `strings.json`; `.github/workflows/verify.yaml` runs the lint, byte-compile, all four verification scripts
+- CI: `.github/workflows/hassfest.yaml` validates the manifest, `strings.json` and `triggers.yaml`; `.github/workflows/verify.yaml` runs the lint, byte-compile and all seven verification scripts
+- Validate before pushing: `docker run --rm -v "${PWD}:/github/workspace" ghcr.io/home-assistant/hassfest`. Hassfest has real rules that the local gate does not cover — manifest key order, `>=` on requirements Home Assistant already pins, `triggers.yaml`, and the compatibility of each pin against the HA release. It caught seven errors in one run that a green local gate missed.
 - Dev install: copy (or symlink) `custom_components/samsungtv_custom/` into `<config>/custom_components/samsungtv_custom/`
 
 **Python 3.14.2+ and Home Assistant 2026.10+ are required.** This is not a preference: the bridge inherited from core uses PEP 649 (lazy annotations) and PEP 758 (`except A, B:` without parentheses), both of which only parse on 3.14+. `ruff.toml` targets `py314` for the same reason.

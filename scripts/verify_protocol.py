@@ -253,6 +253,27 @@ for unrelated in ("something else went wrong", None):
 bridge = fire({"event": "ms.error"})
 check("ms.error without data -> auth_failed", bridge.auth_failed, False)
 
+# Malformed payloads must not raise. This runs inside the websocket receive
+# loop, so an AttributeError here escapes into the library's listener - on the
+# very connection whose health this branch exists to report on. Upstream got
+# this right by short-circuiting on falsy `data`; a rewrite using
+# `.get("data", {})` silently dropped that, because the default only applies
+# when the key is absent, not when the value is null.
+for label, payload in (
+    ("data null", {"event": "ms.error", "data": None}),
+    ("data is a string", {"event": "ms.error", "data": "text"}),
+    ("data is a list", {"event": "ms.error", "data": [1, 2]}),
+    ("message is an int", {"event": "ms.error", "data": {"message": 401}}),
+    ("message is a list", {"event": "ms.error", "data": {"message": []}}),
+):
+    try:
+        bridge = fire(payload)
+    except Exception as err:  # noqa: BLE001 - the point is that none escapes
+        failures.append(f"malformed {label}: raised {type(err).__name__}: {err}")
+        print(f"FAIL   malformed {label:<44} raised {type(err).__name__}")
+        continue
+    check(f"malformed {label} -> no auth_failed", bridge.auth_failed, False)
+
 # The app-list branch must be untouched by the new one.
 bridge = FakeBridge()
 bridge._remote_event = types.MethodType(remote_event, bridge)

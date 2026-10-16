@@ -121,9 +121,9 @@ ED_SOURCES_EVENT = "ed.sourcesChanged"
 ED_SET_SOURCE_EVENT = "ed.setSource"
 
 
-def is_auth_error_message(message: str | None) -> bool:
+def is_auth_error_message(message: object) -> bool:
     """Return True when an ms.error message means the token was refused."""
-    if not message:
+    if not isinstance(message, str):
         return False
     lowered = message.lower()
     return any(candidate in lowered for candidate in AUTH_ERROR_MESSAGES)
@@ -835,7 +835,17 @@ class SamsungTVWSBridge(
         if event == MS_ERROR_EVENT:
             # { 'event': 'ms.error',
             #   'data': {'message': 'unrecognized method value : ms.remote.control'}}
-            message = response.get("data", {}).get("message")
+            #
+            # This runs inside the websocket receive loop, so it must not
+            # raise on a malformed frame. Upstream short-circuited on falsy
+            # `data`; `.get("data", {})` is not equivalent because it only
+            # substitutes the default when the key is absent, not when the
+            # value is null. A `data` of null, a string or a number all
+            # reached `.get()` and raised AttributeError from the library's
+            # listener - on the very connection whose health this branch
+            # exists to report on.
+            data = response.get("data")
+            message = data.get("message") if isinstance(data, dict) else None
             if message == "unrecognized method value : ms.remote.control":
                 LOGGER.error(
                     (

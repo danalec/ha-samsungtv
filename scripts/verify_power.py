@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import copy
 import functools
 import logging
 import pathlib
@@ -33,12 +34,20 @@ ENTITY = (
     / "samsungtv_custom"
     / "entity.py"
 )
+MEDIA_PLAYER = (
+    pathlib.Path(__file__).resolve().parent.parent
+    / "custom_components"
+    / "samsungtv_custom"
+    / "media_player.py"
+)
 
-if not ENTITY.is_file():
-    print(f"FAIL   {ENTITY} not found")
-    sys.exit(1)
+for required in (ENTITY, MEDIA_PLAYER):
+    if not required.is_file():
+        print(f"FAIL   {required} not found")
+        sys.exit(1)
 
 TREE = ast.parse(ENTITY.read_text(encoding="utf-8"))
+MEDIA_TREE = ast.parse(MEDIA_PLAYER.read_text(encoding="utf-8"))
 failures: list[str] = []
 
 
@@ -51,25 +60,31 @@ def check(label: str, got: object, expected: object) -> None:
 
 
 def load_function(
-    name: str, class_name: str | None = None, extra_globals: dict[str, object] | None = None
+    name: str,
+    class_name: str | None = None,
+    extra_globals: dict[str, object] | None = None,
+    tree: ast.Module | None = None,
+    path: pathlib.Path | None = None,
 ) -> object:
-    """Pull one definition out of entity.py and compile it.
+    """Pull one definition out of a module and compile it.
 
     A missing definition is a hard failure with a message, not a traceback:
     it means the feature this script guards is not in the component at all.
     """
-    body = TREE.body
+    tree = tree if tree is not None else TREE
+    path = path if path is not None else ENTITY
+    body = tree.body
     if class_name is not None:
         body = next(
             (
                 n.body
-                for n in TREE.body
+                for n in tree.body
                 if isinstance(n, ast.ClassDef) and n.name == class_name
             ),
             None,
         )
     if body is None:
-        print(f"FAIL   class {class_name} not found in {ENTITY.name}")
+        print(f"FAIL   class {class_name} not found in {path.name}")
         sys.exit(1)
     func = next(
         (
@@ -81,11 +96,16 @@ def load_function(
     )
     if func is None:
         where = f"{class_name}." if class_name else ""
-        print(f"FAIL   {ENTITY.name} defines no {where}{name} - the feature is missing")
+        print(f"FAIL   {path.name} defines no {where}{name} - the feature is missing")
         sys.exit(1)
+    # Decorators are dropped: every one in this component is either a no-op
+    # marker (@override, @callback) or @property, and a property object cannot
+    # be bound with MethodType. The functions are driven by hand anyway.
+    func = copy.deepcopy(func)
+    func.decorator_list = []
     namespace: dict[str, object] = dict(extra_globals or {})
     exec(  # noqa: S102
-        compile(ast.Module(body=[func], type_ignores=[]), str(ENTITY), "exec"),
+        compile(ast.Module(body=[func], type_ignores=[]), str(path), "exec"),
         namespace,
     )
     return namespace[name]
@@ -255,6 +275,73 @@ check("malformed MAC, no automation -> service_unsupported", error, "service_uns
 entity, error = turn_on_for("garbage", with_action=True)
 check("malformed MAC, with automation -> no packet", sent, [])
 check("malformed MAC, with automation -> automation runs", entity._turn_on_action.runs, 1)  # type: ignore[union-attr]
+
+# --------------------------------------------------------------------------
+# 3. The entity advertises what it can actually do
+# --------------------------------------------------------------------------
+print()
+print("supported_features advertises TURN_ON")
+print()
+
+
+class MediaPlayerEntityFeature:
+    """Stand-in for the real flag enum; ints so `|` behaves like a Flag."""
+
+    TURN_ON = 4
+    OTHER = 1
+
+
+supported_features = load_function(
+    "supported_features",
+    class_name="SamsungTVDevice",
+    extra_globals={
+        "MediaPlayerEntityFeature": MediaPlayerEntityFeature,
+        "is_valid_mac": is_valid_mac,
+        "override": lambda func: func,
+    },
+    tree=MEDIA_TREE,
+    path=MEDIA_PLAYER,
+)
+
+
+class FakeFeatureEntity:
+    """Stand-in for the parts of SamsungTVDevice the property touches."""
+
+    _attr_supported_features = MediaPlayerEntityFeature.OTHER
+    _mac: str | None
+    _turn_on_action: FakeAction | None
+
+    def __init__(self, mac: str | None, with_action: bool) -> None:
+        self._mac = mac
+        self._turn_on_action = FakeAction() if with_action else None
+        self.features = types.MethodType(supported_features, self)
+
+
+def features_for(mac: str | None, with_action: bool) -> int:
+    entity = FakeFeatureEntity(mac, with_action)
+    return entity.features()
+
+
+check(
+    "valid MAC, no automation -> TURN_ON advertised",
+    bool(features_for(valid_mac, with_action=False) & MediaPlayerEntityFeature.TURN_ON),
+    True,
+)
+check(
+    "automation, no MAC -> TURN_ON advertised",
+    bool(features_for(None, with_action=True) & MediaPlayerEntityFeature.TURN_ON),
+    True,
+)
+check(
+    "neither -> TURN_ON not advertised",
+    bool(features_for(None, with_action=False) & MediaPlayerEntityFeature.TURN_ON),
+    False,
+)
+check(
+    "malformed MAC, no automation -> TURN_ON not advertised",
+    bool(features_for("garbage", with_action=False) & MediaPlayerEntityFeature.TURN_ON),
+    False,
+)
 
 print()
 if failures:

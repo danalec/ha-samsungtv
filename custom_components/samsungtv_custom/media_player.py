@@ -36,7 +36,7 @@ from homeassistant.util.async_ import create_eager_task
 from .bridge import SamsungTVWSBridge
 from .const import CONF_SSDP_RENDERING_CONTROL_LOCATION, DOMAIN, LOGGER
 from .coordinator import SamsungTVConfigEntry, SamsungTVDataUpdateCoordinator
-from .entity import SamsungTVEntity
+from .entity import SamsungTVEntity, is_valid_mac
 
 SOURCES = {"TV": "KEY_TV", "HDMI": "KEY_HDMI"}
 
@@ -122,8 +122,12 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     def supported_features(self) -> MediaPlayerEntityFeature:
         """Flag media player features that are supported."""
         # `turn_on` triggers are not yet registered during initialisation,
-        # so this property needs to be dynamic
-        if self._turn_on_action:
+        # so this property needs to be dynamic.
+        #
+        # Wake-on-LAN is advertised too, not just the automation: a MAC is
+        # enough to wake a Neo QLED, and without the flag the frontend hides
+        # the power button for exactly the users this feature was written for.
+        if self._turn_on_action or is_valid_mac(self._mac):
             return self._attr_supported_features | MediaPlayerEntityFeature.TURN_ON
         return self._attr_supported_features
 
@@ -139,7 +143,12 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             ]
             self._attr_source_list.extend(self._sources)
         if app_list := self._app_list:
-            self._attr_source_list.extend(app_list)
+            # An app can share its name with a reported input, and select_source
+            # checks inputs first. Appending a duplicate label would show the
+            # same entry twice and leave the app unreachable.
+            self._attr_source_list.extend(
+                name for name in app_list if name not in self._attr_source_list
+            )
 
     def _app_list_callback(self, app_list: dict[str, str]) -> None:
         """App list callback."""
@@ -152,6 +161,10 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         """Input source list callback."""
         self._sources = sources
         self._update_sources()
+        # The list can arrive after the entity is added, so the state has to be
+        # written here. @callback only marks the function as safe to run in the
+        # event loop, it does not publish anything.
+        self.async_write_ha_state()
         self._sources_event.set()
 
     @override

@@ -260,6 +260,21 @@ check(
     FakeSourceEntity(None, {"Netflix": "11101200001"})._attr_source_list,
     ["TV", "HDMI", "Netflix"],
 )
+# An app can share its name with a reported input. select_source checks inputs
+# first, so appending the duplicate would show the same label twice and make
+# the app unreachable.
+check(
+    "an app colliding with an input is not listed twice",
+    FakeSourceEntity({"Netflix": "hdmi:3,0"}, {"Netflix": "11101200001"})._attr_source_list,
+    ["TV", "HDMI", "Netflix"],
+)
+check(
+    "a colliding app keeps the other apps",
+    FakeSourceEntity(
+        {"Netflix": "hdmi:3,0"}, {"Netflix": "11101200001", "Spotify": "3201606009684"}
+    )._attr_source_list,
+    ["TV", "HDMI", "Netflix", "Spotify"],
+)
 
 # --------------------------------------------------------------------------
 # 3. Which route a selection takes
