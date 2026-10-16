@@ -1,0 +1,97 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Este dispositivo já está configurado.",
+      "auth_missing": "O Home Assistant não está autorizado a se conectar a essa TV Samsung. Verifique as configurações de Gerenciador de Dispositivos Externos da sua TV para autorizar o Home Assistant.",
+      "cannot_connect": "Falha ao conectar.",
+      "id_missing": "Este dispositivo Samsung não possui um número de série para identificá-lo.",
+      "not_supported": "Este dispositivo Samsung não é suportado no momento."
+    },
+    "error": {
+      "auth_missing": "O Home Assistant não está autorizado a se conectar a essa TV Samsung. Verifique as configurações de Gerenciador de Dispositivos Externos da sua TV para autorizar o Home Assistant.",
+      "invalid_host": "Host inválido.",
+      "invalid_pin": "O PIN é inválido. Tente novamente."
+    },
+    "flow_title": "{device}",
+    "step": {
+      "confirm": {
+        "description": "Deseja configurar o {device}? Se você nunca conectou o Home Assistant antes, verá um pop-up na TV solicitando uma autorização."
+      },
+      "encrypted_pairing": {
+        "data": {
+          "pin": "PIN"
+        },
+        "data_description": {
+          "pin": "O PIN exibido na sua TV."
+        },
+        "description": "Digite o PIN exibido no {device}."
+      },
+      "pairing": {
+        "description": "Deseja configurar o {device}? Se você nunca conectou o Home Assistant antes, verá um pop-up na TV solicitando uma autorização."
+      },
+      "reauth_confirm": {
+        "description": "Após enviar, aceite o pop-up no {device} solicitando a autorização em até 30 segundos, ou informe o PIN."
+      },
+      "reauth_confirm_encrypted": {
+        "data": {
+          "pin": "PIN"
+        },
+        "data_description": {
+          "pin": "O PIN exibido na sua TV."
+        },
+        "description": "Digite o PIN exibido no {device}."
+      },
+      "reconfigure": {
+        "data": {
+          "host": "Host"
+        },
+        "data_description": {
+          "host": "O nome de host ou o endereço IP da sua TV."
+        },
+        "description": "Atualize o nome de host ou o endereço IP da sua TV Samsung."
+      },
+      "user": {
+        "data": {
+          "host": "Host",
+          "name": "Nome"
+        },
+        "data_description": {
+          "host": "O nome de host ou o endereço IP da sua TV.",
+          "name": "O nome da sua TV. Ele será usado para identificar o dispositivo no Home Assistant."
+        },
+        "description": "Insira as informações da sua TV Samsung. Se você nunca conectou o Home Assistant antes, verá um pop-up na TV solicitando uma autorização."
+      }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "samsungtv_custom.turn_on": "Solicitação para ligar o dispositivo"
+    }
+  },
+  "exceptions": {
+    "encrypted_mode_auth_failed": {
+      "message": "Token e session ID são obrigatórios no modo criptografado."
+    },
+    "error_sending_command": {
+      "message": "Não foi possível enviar o comando para {host}: {error}"
+    },
+    "error_set_volume": {
+      "message": "Não foi possível definir o volume em {host}: {error}"
+    },
+    "invalid_device": {
+      "message": "O dispositivo com o ID {device_id} é inválido ou não foi encontrado."
+    },
+    "media_id_invalid": {
+      "message": "O Media ID deve ser um inteiro positivo."
+    },
+    "service_unsupported": {
+      "message": "Não foi possível ligar {entity}, pois não há uma automação configurada."
+    },
+    "source_unsupported": {
+      "message": "A entidade {entity} não oferece suporte à fonte {source}."
+    },
+    "unhandled_trigger_type": {
+      "message": "Tipo de gatilho não tratado: {trigger_type}."
+    }
+  }
+}

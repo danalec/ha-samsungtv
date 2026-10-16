@@ -1,549 +1,346 @@
-[![](https://img.shields.io/github/release/roberodin/ha-samsungtv-custom/all.svg?style=for-the-badge)](https://github.com/roberodin/ha-samsungtv-custom/releases)
+[![](https://img.shields.io/github/release/danalec/ha-samsungtv/all.svg?style=for-the-badge)](https://github.com/danalec/ha-samsungtv/releases)
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg?style=for-the-badge)](https://github.com/custom-components/hacs)
-[![](https://img.shields.io/github/license/roberodin/ha-samsungtv-custom?style=for-the-badge)](LICENSE)
-[![](https://img.shields.io/badge/MAINTAINER-%40roberodin-red?style=for-the-badge)](https://github.com/roberodin)
+[![](https://img.shields.io/github/license/danalec/ha-samsungtv?style=for-the-badge)](LICENSE)
+[![](https://img.shields.io/badge/MAINTAINER-%40danalec-red?style=for-the-badge)](https://github.com/danalec)
 [![](https://img.shields.io/badge/COMMUNITY-FORUM-success?style=for-the-badge)](https://community.home-assistant.io)
 
-# HomeAssistant - SamsungTV Custom Component
+# Home Assistant - SamsungTV Custom Component
 
-This is a custom component to allow control of SamsungTV devices in [HomeAssistant](https://home-assistant.io). Is a modified version of the built-in [samsungtv](https://www.home-assistant.io/integrations/samsungtv/) with some extra features:
+A custom component that controls Samsung TVs from [Home Assistant](https://home-assistant.io).
 
-# Additional Features:
+This integration is **the official [`samsungtv` integration](https://www.home-assistant.io/integrations/samsungtv/)**, taken
+from `home-assistant/core`, adapted to the `samsungtv_custom` domain, plus **key chaining**.
 
-* Send keys using a native Home Assistant service
-* Customize source list at media player dropdown list
-* Change communication protocol to cover more compatibility TV models. Thanks to:
-    - WS protocol from [@xchwarze](https://github.com/xchwarze/ha-samsungtv-custom)
-    - Qled protocol from [@giefca](https://github.com/giefca/ha-samsungtv-qled)
-    - Ctl beta from [@kdschlosser](https://github.com/kdschlosser/samsungctl)
-* Launch applications and add them to the source list (only for Qled protocol)
-* Launch streaming of music and video from files (not compatible with HA stream component, only for Qled protocol)
+## Why this fork exists
 
-![N|Solid](https://i.imgur.com/8mCGZoO.png)
-![N|Solid](https://i.imgur.com/t3e4bJB.png)
+The official integration ships with Home Assistant. This fork exists for the features it does not have:
 
+- **Chained keys** — send a sequence of keys with explicit delays between them, so a TV actually follows a menu instead of
+  dropping the keys you sent too fast.
+- **A `send_key` media type** — send any raw Samsung key code through the stock `media_player.play_media` service, without
+  a custom service to register.
 
-# Installation (There are two methods, with HACS or manual)
+Everything else deliberately tracks upstream. The protocol layer (`bridge.py`) is byte-for-byte identical to the official
+integration, so a bug fixed upstream lands here without a rewrite.
 
-### 1. Easy Mode
+## What you get
 
-We support [HACS](https://hacs.netlify.com/). Go to "STORE", search "SamsungTV Custom" and install.
+Two entities per TV:
 
-### 2. Manual
+| Entity | Platform | Notes |
+| --- | --- | --- |
+| `media_player.<name>` | `media_player` | Device class `TV`: power, volume, mute, transport controls, source selection |
+| `remote.<name>` | `remote` | Sends raw key commands, with repeat support |
 
-Install it as you would do with any homeassistant custom component:
+Plus:
 
-1. Download `custom_components` folder.
-2. Copy the `samsungtv_custom` direcotry within the `custom_components` directory of your homeassistant installation. The `custom_components` directory resides within your homeassistant configuration directory.
-**Note**: if the custom_components directory does not exist, you need to create it.
-After a correct installation, your configuration directory should look like the following.
-    ```
-    └── ...
-    └── configuration.yaml
-    └── custom_components
-        └── samsungtv_custom
-            └── samsungctl_080b
-            └── samsungctl_qled
-            └── samsungtvws
-            └── __init__.py
-            └── media_player.py
-            └── manifest.json
-            └── tv-token.txt
-    ```
+- **Three protocols**, chosen automatically per model — see [Protocols](#protocols).
+- **2021+ TV support** via the encrypted websocket on port 8000, with PIN pairing.
+- **Discovery** over DHCP, SSDP and zeroconf (AirPlay), so the TV shows up in the UI without typing an IP address.
+- **Volume and mute over UPnP** (`RenderingControl`), which needs discovery — without it, those two features degrade.
+- **Device triggers** for turn on and turn off, so automations can act on TV state.
+- **App list** read from the TV, merged into the `media_player` source list — see [apps and app IDs](docs/App_ids.md).
 
+## Requirements
 
-# Configuration
+| | |
+| --- | --- |
+| Home Assistant | **2026.10.0** or newer |
+| Python | **3.14.2** or newer |
+| TV | 2016 or newer (Tizen family) |
 
-1. Enable the component by editing the configuration.yaml file (within the config directory as well).
-Edit it by adding the following lines:
-    ### Example configuration.yaml for default ctl protocol
-    ```
-    media_player:
-      - platform: samsungtv_custom
-        host: IP_ADDRESS
-        mac: MAC_ADDRESS
-        port: (8001 or 8002)
-        sourcelist: '{"PlayStation": "KEY_HDMI1", "RaspberryPi": "KEY_HDMI2", "Chromecast": "KEY_HDMI3"}'
-    ```
-    ### Example configuration.yaml for ws protocol
-    ```
-    media_player:
-      - platform: samsungtv_custom
-        host: IP_ADDRESS
-        mac: MAC_ADDRESS
-        port: (8001 or 8002)
-        sourcelist: '{"PlayStation": "KEY_HDMI1"}'
-        protocol: ws
-    ```
-    ### Example configuration.yaml for ctl_beta protocol
-    ```
-    media_player:
-      - platform: samsungtv_custom
-        host: IP_ADDRESS
-        port: (8001 or 8002)
-        mac: MAC_ADDRESS
-        sourcelist: '{"RaspberryPi": "KEY_HDMI2", "Chromecast": "KEY_HDMI3"}'
-        protocol: ctl_beta
-    ```
-    ### Example configuration.yaml for ctl_beta protocol for H/J Models
-    ```
-     media_player:
-       - platform: samsungtv_custom
-         host: IP_ADDRESS
-         port: (8001 or 8002)
-         mac: MAC_ADDRESS
-         sourcelist: '{"RaspberryPi": "KEY_HDMI2", "Chromecast": "KEY_HDMI3"}'
-         protocol: ctl_beta
-         token: kdsjfbsdkjbsdkjfskdjf:2
-         id: 07270e01-0078-1000-8cd0-c4576e9dxxxxx
-    ```
-    The token get be fetched via https://github.com/eclair4151/SmartCrypto
-    The id can be fetched vie http://IP_ADDRESS:8001/api/v2/
-    ### Example configuration.yaml for ctl_qled protocol
-    ```
-    media_player:
-      - platform: samsungtv_custom
-        host: IP_ADDRESS
-        port: 8002
-        mac: MAC_ADDRESS
-        sourcelist: '{"PlayStation": "KEY_HDMI1", "RaspberryPi": "KEY_HDMI2", "Chromecast": "KEY_HDMI3"}'
-        applist: "YouTube, Apple TV, Plex, Prime Video, Spotify" (only for QLED and similar)
-        protocol: ctl_qled
-    ```
-    **Note**: This is the same as the configuration for the built-in [Samsung Smart TV](https://www.home-assistant.io/integrations/samsungtv/) component, except for the custom variables.
+The Python floor is not a preference. The bridge inherited from upstream uses PEP 649 lazy annotations and PEP 758
+unparenthesized `except` clauses, and neither parses before 3.14.
 
-    ### Custom variables
+Your TV and Home Assistant must be on the same network. Samsung TVs do not accept websocket connections across VLANs.
 
-    - **sourcelist:** (json)(Optional) This contains the visible sources in the dropdown list in media player UI.<br>
-    Default value: '{"TV": "KEY_TV", "HDMI": "KEY_HDMI"}'<br>
+## Installation
 
-    - **protocol:** (string)(Optional) This determine which communication protocol will be used:<br/>
-    Default value: ctl<br>
-    Options:<br>
-    **ctl**: Default HA protocol.<br>
-    **ws**: For 2016+ TVs models.<br>
-    **ctl_beta**: Last beta version of samsungctl.<br>
-    **ctl_qled**: Only for latest TV QLED models and similar.<br>
+### HACS
 
-    - **applist:** (list)(Optional) List of the apps you want in the source drop down menu (YouTube, Plex, Prime Video, Universal Guide, Netflix, Apple TV, Steam Link, MyCANAL, Spotify, Molotov, SmartThings, e-Manual, Google Play, Gallery, Rakuten TV, RMC Sport, MYTF1 VOD, Blacknut, Facebook Watch, McAfee Security for TV, OCS, Playzer)<br>
-    
-2. Reboot Home Assistant
-3. Congrats! You're all set!
+Add this repository as a custom repository of type *Integration*, install **SamsungTV Custom**, and restart Home Assistant.
 
-# Usage
+### Manual
 
-### Send Keys
-```
+Copy `custom_components/samsungtv_custom/` into the `custom_components/` directory of your Home Assistant configuration
+directory, creating it if it does not exist, then restart Home Assistant.
+
+## Configuration
+
+Configuration is UI-only — there is no `configuration.yaml` block for this integration.
+
+1. Go to **Settings** → **Devices & services** → **Add integration**.
+2. If your TV was discovered, it is listed automatically; otherwise search for **SamsungTV** and enter the host and name.
+3. Confirm. If you have never connected Home Assistant to this TV, a popup appears **on the TV** — accept it within
+   30 seconds.
+4. For a 2021 or newer TV, the TV displays a PIN. Enter it in the dialog.
+
+If setup fails, power cycle the TV first. Applications left running on the TV can hold the websocket port and block the
+connection. Check the Home Assistant log for the reason.
+
+The integration supports **re-authentication** (when the TV revokes authorization) and **reconfigure** (when the TV's IP
+address changes), both from the integration's overflow menu.
+
+## How state is updated
+
+Power state is **polled every 10 seconds** (`SCAN_INTERVAL` in `coordinator.py`). That is the only periodic traffic this
+integration generates, and it continues for as long as the entry is loaded. What that poll costs depends on the protocol:
+
+| Protocol | How power state is read |
+| --- | --- |
+| `legacy` (55000) | One blocking `samsungctl` ping, run in an executor |
+| `websocket` (8001/8002) | `is_alive()` on the connection that is already open — no extra request |
+| `encrypted` (8000) | A REST device-info call for `PowerState`, refreshed on every poll |
+
+The encrypted bridge deliberately avoids its fallback path: when a model does not report `PowerState` in its device
+info, opening a websocket can **wake the TV**. If your 2021+ TV turns itself on after a while with this integration
+loaded, that is the path being taken.
+
+Volume and mute are **not** polled. They arrive as UPnP `RenderingControl` events from the TV, which is what
+`iot_class: local_push` refers to. Without discovery there is no UPnP device, those two attributes stop updating, and
+the volume slider stops working while volume up/down and mute still do — those send key codes.
+
+Two behaviours worth knowing:
+
+- After a power-off key is sent, the bridge refuses further commands until the TV has settled, so a stray key cannot turn
+  it straight back on.
+- If the TV revokes authorization, polling stops and Home Assistant starts the **re-authentication** flow. The entities
+  go unavailable until you accept the prompt on the TV or enter the PIN.
+
+## Protocols
+
+The bridge picks one method per model and falls back only where the model allows it.
+
+| Method | Port | TVs |
+| --- | --- | --- |
+| `legacy` | 55000 | Older Tizen models, no API |
+| `websocket` | 8001 / 8002 | **Most 2016+ TVs, including every Neo QLED** |
+| `encrypted` | 8000 | **H and J series only** (the 2021 naming) |
+
+Selection is by model name: the letter in position 5 of the model string decides. `UN55HU6900` has an H there, so it
+needs the PIN flow; `QN90B` has a B there, so it does not. When the encrypted method is tried and the TV refuses to
+connect, the integration falls back to websocket on its own.
+
+If a 2021+ TV settles on `legacy`, the model was not detected correctly and the TV will refuse keys. Open an issue with
+the log.
+
+## Validated models
+
+Checked against real hardware, or against a protocol trace captured from it:
+
+| Model | Protocol | Notes |
+| --- | --- | --- |
+| `QN90B` (Neo QLED 90", 2022) | websocket, **8002 only** | Plain `ws://` on 8001 is refused by this firmware. Pairing asks for no PIN — the TV grants the token silently on the `Allow` popup, or with no popup at all once the client name is authorized |
+| `Q80B` / `QN80B` (Neo QLED 80", 2022) | websocket, **8002 only** | Same firmware family as the QN90B: same pairing, same refusal of 8001 |
+| `QN900B`, `QN85B`, `QN90C/D/E` | websocket | Later Neo QLED generations; the year letter sits in the same position and does not change the transport |
+| `UN55HU6900`, `UE55JU6800` (H/J series) | encrypted, 8000 | PIN pairing, part of setup |
+
+Two behaviours specific to this family are worth calling out:
+
+- **Instant On changes what "off" means.** With *Settings → General & Privacy → Power and Energy Saving → Instant On*
+  enabled, the TV keeps its network alive in standby. Power state then reads as on while the screen is black, and the
+  entity reports the TV as on. Turn Instant On off for a true deep-off state.
+- **Rejections are quiet.** When the TV refuses the stored token it answers the command with
+  `ms.error {"message": "No Authorized"}` and keeps the socket open rather than closing it. An integration that only
+  inspects connect-time errors sits there looking healthy while dropping every key. This one notices and starts
+  re-authentication — see [scripts/verify_protocol.py](scripts/verify_protocol.py).
+
+Neo QLEDs from 2026 (`QN90H` and siblings) put an **H** in position 5, which the 2021 H-series rule reads as "needs
+encrypted". The encrypted attempt fails on them and the integration falls back to websocket, so they do work — but the
+entry is created as `encrypted` first and the log will say so.
+
+## Usage
+
+### Raw keys
+
+`media_player.play_media` with `media_content_type: send_key`:
+
+```yaml
 service: media_player.play_media
+data:
+  entity_id: media_player.samsung_tv
+  media_content_type: send_key
+  media_content_id: KEY_HOME
 ```
 
-```json
-{
-  "entity_id": "media_player.samsungtv",
-  "media_content_type": "send_key",
-  "media_content_id": "KEY_CODE",
-}
-```
-**Note**: Change "KEY_CODE" by desired key_code.
+See [the key code list](docs/Key_codes.md).
 
-## Launch application (only for ctl_qled protocol)
-You can use the source droplist or service ``media_player.select_source`` to launch one of the applications of your configuration file.
+### Key chaining
 
-To launch an other application you must use the ``media_player.play_media`` service.
-```
+Join keys with `+` to send a sequence. A numeric segment is an explicit delay in milliseconds, clamped to 200–2000 ms.
+Consecutive keys are separated by a default 500 ms, because a TV that receives two keys at once drops one of them.
+
+```yaml
 service: media_player.play_media
+data:
+  entity_id: media_player.samsung_tv
+  media_content_type: send_key
+  media_content_id: KEY_SOURCES+500+KEY_ENTER
 ```
-```
-{
-  "entity_id": "media_player.samsungtv",
-  "media_content_type": "app",
-  "media_content_id": "Application name",
-}
-```
-**Compatible applications (case sensitive):** YouTube, Plex, Prime Video, Universal Guide, Netflix, Apple TV, Steam Link, MyCANAL, Spotify, Molotov, SmartThings, e-Manual, Google Play, Gallery, Rakuten TV, RMC Sport, MYTF1 VOD, Blacknut, Facebook Watch, McAfee Security for TV, OCS, Playzer.
 
-## Launch media file (only for ctl_qled protocol)
-```
+The example above opens the source menu. See [the chaining patterns](docs/Key_chaining.md).
+
+### Channels
+
+```yaml
 service: media_player.play_media
-```
-```
-{
-  "entity_id": "media_player.samsungtv",
-  "media_content_type": "url",
-  "media_content_id": "MEDIA_URL",
-}
+data:
+  entity_id: media_player.samsung_tv
+  media_content_type: channel
+  media_content_id: "14"
 ```
 
-## Script example:
-```
-tv_channel_down:
-  alias: Channel down
-  sequence:
-  - service: media_player.play_media
-    data:
-      entity_id: media_player.samsung_tv55
-      media_content_id: KEY_CHDOWN
-      media_content_type: "send_key"
+### Apps
+
+```yaml
+service: media_player.play_media
+data:
+  entity_id: media_player.samsung_tv
+  media_content_type: app
+  media_content_id: "11101200001"
 ```
 
-***Key codes***
----------------
-The list of accepted keys may vary depending on the TV model, but the following list has some common key codes and their descriptions.
+### Remote
 
-*Power Keys*
-____________
-Key|Description
----|-----------
-KEY_POWEROFF|PowerOFF
-KEY_POWERON|PowerOn
-KEY_POWER|PowerToggle
+```yaml
+service: remote.send_command
+target:
+  entity_id: remote.samsung_tv
+data:
+  command:
+    - KEY_HOME
+    - KEY_EXIT
+  num_repeats: 1
+```
 
-*Input Keys*
-____________
-Key|Description
----|-----------
-KEY_SOURCE|Source
-KEY_COMPONENT1|Component1
-KEY_COMPONENT2|Component2
-KEY_AV1|AV1
-KEY_AV2|AV2
-KEY_AV3|AV3
-KEY_SVIDEO1|SVideo1
-KEY_SVIDEO2|SVideo2
-KEY_SVIDEO3|SVideo3
-KEY_HDMI|HDMI
-KEY_HDMI1|HDMI1
-KEY_HDMI2|HDMI2
-KEY_HDMI3|HDMI3
-KEY_HDMI4|HDMI4
-KEY_FM_RADIO|FMRadio
-KEY_DVI|DVI
-KEY_DVR|DVR
-KEY_TV|TV
-KEY_ANTENA|AnalogTV
-KEY_DTV|DigitalTV
+### Turning the TV on
 
-*Number Keys*
-_____________
-Key|Description
----|-----------
-KEY_1|Key1
-KEY_2|Key2
-KEY_3|Key3
-KEY_4|Key4
-KEY_5|Key5
-KEY_6|Key6
-KEY_7|Key7
-KEY_8|Key8
-KEY_9|Key9
-KEY_0|Key0
+`media_player.turn_on` sends a **wake-on-LAN** packet when the MAC address known to Home Assistant is usable. Samsung TVs
+are commonly documented as ignoring those, and that holds for many of them — but it does not hold for the Neo QLED
+family, where a magic packet wakes the TV from deep standby.
 
-*Misc Keys*
-___________
-Key|Description
----|-----------
-KEY_PANNEL_CHDOWN|3D
-KEY_ANYNET|AnyNet+
-KEY_ESAVING|EnergySaving
-KEY_SLEEP|SleepTimer
-KEY_DTV_SIGNAL|DTVSignal
+If a **turn on automation** is attached to the TV in **Settings** → **Automations & Scenes** → **Device triggers** →
+**Device is requested to turn on**, that automation runs too, after the packet. That is how an HDMI-CEC capable device, a
+Raspberry Pi, or another hub joins in — the automation covers what wake-on-LAN cannot.
 
-*Channel Keys*
-______________
-Key|Description
----|-----------
-KEY_CHUP|ChannelUp
-KEY_CHDOWN|ChannelDown
-KEY_PRECH|PreviousChannel
-KEY_FAVCH|FavoriteChannels
-KEY_CH_LIST|ChannelList
-KEY_AUTO_PROGRAM|AutoProgram
-KEY_MAGIC_CHANNEL|MagicChannel
+With neither a usable MAC nor an automation, `turn_on` raises an error saying exactly that, instead of silently doing
+nothing.
 
-*Volume Keys*
-_____________
-Key|Description
----|-----------
-KEY_VOLUP|VolumeUp
-KEY_VOLDOWN|VolumeDown
-KEY_MUTE|Mute
+Samsung TVs have a **different MAC per interface**. The address used here is the one the TV reported during setup, which
+is its Wi-Fi address. If your TV is on Ethernet, or if `turn_on` does nothing, that is the first thing to check.
 
-*Direction Keys*
-________________
-Key|Description
----|-----------
-KEY_UP|NavigationUp
-KEY_DOWN|NavigationDown
-KEY_LEFT|NavigationLeft
-KEY_RIGHT|NavigationRight
-KEY_RETURN|NavigationReturn/Back
-KEY_ENTER|NavigationEnter
+### Sources
 
-*Media Keys*
-____________
-Key|Description
----|-----------
-KEY_REWIND|Rewind
-KEY_STOP|Stop
-KEY_PLAY|Play
-KEY_FF|FastForward
-KEY_REC|Record
-KEY_PAUSE|Pause
-KEY_LIVE|Live
-KEY_QUICK_REPLAY|fnKEY_QUICK_REPLAY
-KEY_STILL_PICTURE|fnKEY_STILL_PICTURE
-KEY_INSTANT_REPLAY|fnKEY_INSTANT_REPLAY
+The source list is built from the TV itself. While it is on, the integration asks which physical inputs exist and lists
+them alongside the apps:
 
-*Picture in Picture*
-____________________
-Key|Description
----|-----------
-KEY_PIP_ONOFF|PIPOn/Off
-KEY_PIP_SWAP|PIPSwap
-KEY_PIP_SIZE|PIPSize
-KEY_PIP_CHUP|PIPChannelUp
-KEY_PIP_CHDOWN|PIPChannelDown
-KEY_AUTO_ARC_PIP_SMALL|PIPSmall
-KEY_AUTO_ARC_PIP_WIDE|PIPWide
-KEY_AUTO_ARC_PIP_RIGHT_BOTTOM|PIPBottomRight
-KEY_AUTO_ARC_PIP_SOURCE_CHANGE|PIPSourceChange
-KEY_PIP_SCAN|PIPScan
+```
+TV · HDMI 1 · HDMI 2 · Terrestrial · Netflix · Spotify
+```
 
-*Modes*
-_______
-Key|Description
----|-----------
-KEY_VCR_MODE|VCRMode
-KEY_CATV_MODE|CATVMode
-KEY_DSS_MODE|DSSMode
-KEY_TV_MODE|TVMode
-KEY_DVD_MODE|DVDMode
-KEY_STB_MODE|STBMode
-KEY_PCMODE|PCMode
+Selecting `HDMI 2` switches to it exactly, using the identifier the TV reported. That is firmware-dependent — some
+firmware ignores the request — and when the TV does not answer, the list keeps the generic `TV` and `HDMI` entries, which
+switch by key code as they always did.
 
-*Color Keys*
-____________
-Key|Description
----|-----------
-KEY_GREEN|Green
-KEY_YELLOW|Yellow
-KEY_CYAN|Cyan
-KEY_RED|Red
+The list is fetched once, when the TV is on at startup, so an input plugged in later appears after Home Assistant
+reloads the integration.
 
-*Teletext*
-__________
-Key|Description
----|-----------
-KEY_TTX_MIX|TeletextMix
-KEY_TTX_SUBFACE|TeletextSubface
+## Not included
 
-*AspectRatio*
-______________
-Key|Description
----|-----------
-KEY_ASPECT|AspectRatio
-KEY_PICTURE_SIZE|PictureSize
-KEY_4_3|AspectRatio4:3
-KEY_16_9|AspectRatio16:9
-KEY_EXT14|AspectRatio3:4(Alt)
-KEY_EXT15|AspectRatio16:9(Alt)
+These came from the lineage this fork was originally based on and are **not** in this component. They are listed so nobody
+goes looking for them:
 
-*Picture Mode*
-______________
-Key|Description
----|-----------
-KEY_PMODE|PictureMode
-KEY_PANORAMA|PictureModePanorama
-KEY_DYNAMIC|PictureModeDynamic
-KEY_STANDARD|PictureModeStandard
-KEY_MOVIE1|PictureModeMovie
-KEY_GAME|PictureModeGame
-KEY_CUSTOM|PictureModeCustom
-KEY_EXT9|PictureModeMovie(Alt)
-KEY_EXT10|PictureModeStandard(Alt)
+- **SmartThings cloud API** — channel names, HDMI source detection, `ST_*` keys. No token is requested, and nothing leaves
+  your network.
+- **Channel and app logos**, `entity_picture`.
+- **Picture mode, sound mode and art mode** services.
+- **Custom services.** The integration registers none; it uses the standard `media_player` and `remote` services.
+- **YAML configuration and options** — the source list is built from the TV (`TV`, `HDMI`, plus the apps the TV reports),
+  not configured by hand.
+- **Hold keys** (`KEY_CODE, <hold_time>`). Use `num_repeats` on `remote.send_command` instead.
 
-*Menus*
-_______
-Key|Description
----|-----------
-KEY_MENU|Menu
-KEY_TOPMENU|TopMenu
-KEY_TOOLS|Tools
-KEY_HOME|Home
-KEY_CONTENTS|Contents
-KEY_GUIDE|Guide
-KEY_DISC_MENU|DiscMenu
-KEY_DVR_MENU|DVRMenu
-KEY_HELP|Help
+Inherited from upstream, and worth knowing before you build on top of it:
 
-*OSD*
-_____
-Key|Description
----|-----------
-KEY_INFO|Info
-KEY_CAPTION|Caption
-KEY_CLOCK_DISPLAY|ClockDisplay
-KEY_SETUP_CLOCK_TIMER|SetupClock
-KEY_SUB_TITLE|Subtitle
+- **The active source is never reported.** `media_player.select_source` works, and the source list is correct, but the
+  entity does not expose which source the TV is on. The same applies to the running app.
+- **The app list is fetched once at startup**, and never on the `legacy` protocol. See [apps and app IDs](docs/App_ids.md).
 
-*Zoom*
-______
-Key|Description
----|-----------
-KEY_ZOOM_MOVE|ZoomMove
-KEY_ZOOM_IN|ZoomIn
-KEY_ZOOM_OUT|ZoomOut
-KEY_ZOOM1|Zoom1
-KEY_ZOOM2|Zoom2
+## Development
 
-*Other Keys*
-____________
-Key|Description
----|-----------
-KEY_WHEEL_LEFT|WheelLeft
-KEY_WHEEL_RIGHT|WheelRight
-KEY_ADDDEL|Add/Del
-KEY_PLUS100|Plus100
-KEY_AD|AD
-KEY_LINK|Link
-KEY_TURBO|Turbo
-KEY_CONVERGENCE|Convergence
-KEY_DEVICE_CONNECT|DeviceConnect
-KEY_11|Key11
-KEY_12|Key12
-KEY_FACTORY|KeyFactory
-KEY_3SPEED|Key3SPEED
-KEY_RSURF|KeyRSURF
-KEY_FF_|FF_
-KEY_REWIND_|REWIND_
-KEY_ANGLE|Angle
-KEY_RESERVED1|Reserved1
-KEY_PROGRAM|Program
-KEY_BOOKMARK|Bookmark
-KEY_PRINT|Print
-KEY_CLEAR|Clear
-KEY_VCHIP|VChip
-KEY_REPEAT|Repeat
-KEY_DOOR|Door
-KEY_OPEN|Open
-KEY_DMA|DMA
-KEY_MTS|MTS
-KEY_DNIe|DNIe
-KEY_SRS|SRS
-KEY_CONVERT_AUDIO_MAINSUB|ConvertAudioMain/Sub
-KEY_MDC|MDC
-KEY_SEFFECT|SoundEffect
-KEY_PERPECT_FOCUS|PERPECTFocus
-KEY_CALLER_ID|CallerID
-KEY_SCALE|Scale
-KEY_MAGIC_BRIGHT|MagicBright
-KEY_W_LINK|WLink
-KEY_DTV_LINK|DTVLink
-KEY_APP_LIST|ApplicationList
-KEY_BACK_MHP|BackMHP
-KEY_ALT_MHP|AlternateMHP
-KEY_DNSe|DNSe
-KEY_RSS|RSS
-KEY_ENTERTAINMENT|Entertainment
-KEY_ID_INPUT|IDInput
-KEY_ID_SETUP|IDSetup
-KEY_ANYVIEW|AnyView
-KEY_MS|MS
-KEY_MORE|
-KEY_MIC|
-KEY_NINE_SEPERATE|
-KEY_AUTO_FORMAT|AutoFormat
-KEY_DNET|DNET
+There is no build step and no lockfile. The component is plain Python; dependencies are declared in `manifest.json` and
+installed by Home Assistant.
 
-*Auto Arc Keys*
-_______________
-Key|Description
----|-----------
-KEY_AUTO_ARC_C_FORCE_AGING|
-KEY_AUTO_ARC_CAPTION_ENG|
-KEY_AUTO_ARC_USBJACK_INSPECT|
-KEY_AUTO_ARC_RESET|
-KEY_AUTO_ARC_LNA_ON|
-KEY_AUTO_ARC_LNA_OFF|
-KEY_AUTO_ARC_ANYNET_MODE_OK|
-KEY_AUTO_ARC_ANYNET_AUTO_START|
-KEY_AUTO_ARC_CAPTION_ON|
-KEY_AUTO_ARC_CAPTION_OFF|
-KEY_AUTO_ARC_PIP_DOUBLE|
-KEY_AUTO_ARC_PIP_LARGE|
-KEY_AUTO_ARC_PIP_LEFT_TOP|
-KEY_AUTO_ARC_PIP_RIGHT_TOP|
-KEY_AUTO_ARC_PIP_LEFT_BOTTOM|
-KEY_AUTO_ARC_PIP_CH_CHANGE|
-KEY_AUTO_ARC_AUTOCOLOR_SUCCESS|
-KEY_AUTO_ARC_AUTOCOLOR_FAIL|
-KEY_AUTO_ARC_JACK_IDENT|
-KEY_AUTO_ARC_CAPTION_KOR|
-KEY_AUTO_ARC_ANTENNA_AIR|
-KEY_AUTO_ARC_ANTENNA_CABLE|
-KEY_AUTO_ARC_ANTENNA_SATELLITE|
+```bash
+python -m compileall -q custom_components/samsungtv_custom   # byte-compile
+ruff check custom_components/samsungtv_custom               # lint (ruff.toml)
+python scripts/verify_keychain.py                           # key chain parsing, delay clamping
+python scripts/verify_imports.py                            # no orphaned or broken relative imports
+python scripts/verify_strings.py                            # strings.json and translations agree leaf for leaf
+python scripts/verify_repo.py                               # no .pyc tracked, every tracked file ends with a newline
+python scripts/verify_protocol.py                           # model -> protocol routing and token-rejection handling
+python scripts/verify_power.py                              # wake-on-lan, MAC validation and the turn_on decision
+python scripts/verify_sources.py                            # direct source switching, both reply shapes and the fallback
+```
 
-*Panel Keys*
-____________
-Key|Description
----|-----------
-KEY_PANNEL_POWER|
-KEY_PANNEL_CHUP|
-KEY_PANNEL_VOLUP|
-KEY_PANNEL_VOLDOW|
-KEY_PANNEL_ENTER|
-KEY_PANNEL_MENU|
-KEY_PANNEL_SOURCE|
-KEY_PANNEL_ENTER|
+`ruff.toml` requires ruff **0.16.10** or newer, the same floor as upstream. To run it without installing anything:
 
-<br></br>
-*Extended Keys*
-_______________
-Key|Description
----|-----------
-KEY_EXT1|
-KEY_EXT2|
-KEY_EXT3|
-KEY_EXT4|
-KEY_EXT5|
-KEY_EXT6|
-KEY_EXT7|
-KEY_EXT8|
-KEY_EXT11|
-KEY_EXT12|
-KEY_EXT13|
-KEY_EXT16|
-KEY_EXT17|
-KEY_EXT18|
-KEY_EXT19|
-KEY_EXT20|
-KEY_EXT21|
-KEY_EXT22|
-KEY_EXT23|
-KEY_EXT24|
-KEY_EXT25|
-KEY_EXT26|
-KEY_EXT27|
-KEY_EXT28|
-KEY_EXT29|
-KEY_EXT30|
-KEY_EXT31|
-KEY_EXT32|
-KEY_EXT33|
-KEY_EXT34|
-KEY_EXT35|
-KEY_EXT36|
-KEY_EXT37|
-KEY_EXT38|
-KEY_EXT39|
-KEY_EXT40|
-KEY_EXT41|
+```bash
+uvx ruff@0.16.10 check custom_components/samsungtv_custom
+```
 
-Please note that some codes are different on the 2016+ TVs. For example, `KEY_POWEROFF` is `KEY_POWER` on the newer TVs.
+Home Assistant is not a dev dependency, so the verification scripts read the real shipped files rather than a copy: the
+key-chain and import checks extract the functions they exercise with `ast`, and the strings check compares
+`strings.json` against every file in `translations/` leaf for leaf.
 
-***References***
-----------------
+Both commands run in CI on every push and pull request (`.github/workflows/verify.yaml`), alongside
+`home-assistant/actions/hassfest` for manifest and `strings.json` validation (`.github/workflows/hassfest.yaml`).
 
-The code list has been extracted from: https://github.com/kdschlosser/samsungctl<br>
-ws wrapper protocol from: https://github.com/xchwarze/samsung-tv-ws-api<br>
-Qled integration from: https://github.com/giefca/ha-samsungtv-qled
+Protocol fixes belong upstream in `home-assistant/core`. See [AGENTS.md](AGENTS.md) for the full contributor guide.
+
+## Removing the integration
+
+Delete it from **Settings** → **Devices & services** → the integration's overflow menu → **Delete**. Nothing is left behind:
+no token file, no cloud account, no state outside Home Assistant.
+
+Then revoke access on the TV itself, otherwise it keeps listing Home Assistant as an authorized device:
+**Settings** → **General** → **External Device Manager**. On some firmware versions this screen only appears while the TV
+is on and not in a menu.
+
+## Troubleshooting
+
+| Symptom | Cause |
+| --- | --- |
+| Setup hangs, no popup on the TV | The TV is powered off or a running application is holding the websocket. Power cycle it |
+| "not authorized to connect" | Reject the TV's **External Device Manager** prompt, then reconfigure the integration |
+| Keys do nothing and nothing is logged | The TV refused the token. Re-authentication is now started; accept the prompt on the TV |
+| Keys do nothing on a 2021 H/J TV | The entry settled on `legacy` instead of `encrypted` — the model was not detected |
+| Log shows 8001 failing on a Neo QLED | That firmware refuses plain `ws://`. The integration retries on 8002 automatically |
+| TV shows `on` while the screen is black | **Instant On** is enabled, keeping the network alive in standby. Turn it off |
+| Volume slider does nothing | Volume level needs UPnP, which needs discovery. Check the log for `ssdp_rendering_control_location` |
+| App list is empty | The list is fetched once at startup, and the `legacy` protocol never returns one. See [apps and app IDs](docs/App_ids.md) |
+| `turn_on` does nothing | The TV is on Ethernet and the stored MAC is its Wi-Fi address. Samsung uses a different MAC per interface |
+| No `HDMI 1`, `HDMI 2` in the source list | The TV did not answer `ed.sourcesChanged`. The list falls back to `TV`/`HDMI`, which switch by key code |
+| Entry goes unavailable randomly | Re-authentication is required; a re-auth dialog will appear |
+
+Download diagnostics from the integration's overflow menu before opening an issue.
+
+## Credits
+
+This integration is maintained by [danalec][danalec].
+
+The protocol layer, config flow and entity model are taken from the official Home Assistant `samsungtv` integration, which
+descends from [ha-samsungtv-custom][ha_samsungtv_custom] by [roberodin][roberodin] →
+[SamsungTV Tizen][samsungtv_tizen] by [jaruba][jaruba] → [SamsungTV Smart][samsungtv_smart] by [ollo69][ollo69].
+
+Logo support in that lineage was based on [jaruba channel-logos][channels-logo], developed with the support of
+[Screwdgeh][screwdgeh]. Logos are not part of this component.
+
+[danalec]: https://github.com/danalec
+[ha_samsungtv_custom]: https://github.com/roberodin/ha-samsungtv-custom
+[roberodin]: https://github.com/roberodin
+[samsungtv_tizen]: https://github.com/jaruba/ha-samsungtv-tizen
+[jaruba]: https://github.com/jaruba
+[samsungtv_smart]: https://github.com/ollo69/ha-samsungtv-smart
+[ollo69]: https://github.com/ollo69
+[channels-logo]: https://github.com/jaruba/channel-logos
+[screwdgeh]: https://github.com/Screwdgeh

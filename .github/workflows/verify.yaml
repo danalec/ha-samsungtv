@@ -1,0 +1,52 @@
+name: Verify
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches: ["*"]
+
+jobs:
+  verify:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/checkout@v5"
+
+      # The bridge uses PEP 649 lazy annotations and PEP 758 unparenthesized
+      # except clauses. Both need Python 3.14+, and HA requires >=3.14.2.
+      - uses: "actions/setup-python@v6"
+        with:
+          python-version: "3.14"
+
+      - name: Install ruff
+        run: pip install --disable-pip-version-check "ruff==0.16.10"
+
+      - name: Lint
+        run: ruff check --no-cache custom_components/samsungtv_custom
+
+      - name: Byte-compile
+        run: python -m compileall -q custom_components/samsungtv_custom
+
+      # Home Assistant is not a dependency here: these scripts extract the real
+      # functions from the source with ast and exercise them directly.
+      - name: Verify key chaining
+        run: python scripts/verify_keychain.py
+
+      - name: Verify imports
+        run: python scripts/verify_imports.py
+
+      - name: Verify translations
+        run: python scripts/verify_strings.py
+
+      - name: Verify protocol routing
+        run: python scripts/verify_protocol.py
+
+      - name: Verify power on
+        run: python scripts/verify_power.py
+
+      - name: Verify source switching
+        run: python scripts/verify_sources.py
+
+      - name: Repo hygiene
+        run: python scripts/verify_repo.py
