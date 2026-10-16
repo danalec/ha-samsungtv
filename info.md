@@ -6,6 +6,10 @@ This is the official `samsungtv` integration from `home-assistant/core`, adapted
 extended with **key chaining** — send a sequence of keys with explicit delays, so the TV follows a menu instead of
 dropping keys sent too fast.
 
+**Rebuilt on the current protocol layer.** The previous base only spoke the legacy port and the plain websocket, so the
+H and J series — a large slice of the 2021-onward range — had no working transport and failed silently. This one speaks
+all three, including the encrypted websocket on port 8000 with PIN pairing.
+
 **Two entities per TV:** a `media_player` (power, volume, mute, transport, sources) and a `remote` (raw key commands with
 repeat). Setup happens entirely in the UI, over DHCP, SSDP or zeroconf discovery.
 
