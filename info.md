@@ -6,13 +6,18 @@ This is the official `samsungtv` integration from `home-assistant/core`, adapted
 extended with **key chaining** — send a sequence of keys with explicit delays, so the TV follows a menu instead of
 dropping keys sent too fast.
 
+**Rebuilt on the current protocol layer.** The previous base only spoke the legacy port and the plain websocket, so the
+H and J series — a large slice of the 2021-onward range — had no working transport and failed silently. This one speaks
+all three, including the encrypted websocket on port 8000 with PIN pairing.
+
 **Two entities per TV:** a `media_player` (power, volume, mute, transport, sources) and a `remote` (raw key commands with
 repeat). Setup happens entirely in the UI, over DHCP, SSDP or zeroconf discovery.
 
 **Requires Home Assistant 2026.10.0+ and Python 3.14.2+.** TV models from 2016 onwards.
 
-Turning the TV on runs a **turn on automation** you attach to the TV as a device trigger, instead of a wake-on-LAN packet,
-because most Samsung TVs ignore those.
+Turning the TV on sends a **wake-on-LAN** packet when a usable MAC is known — Neo QLEDs wake from deep standby, despite
+being commonly documented as ignoring those. If you attach a **turn on automation** to the TV as a device trigger, that
+automation runs too, which is how an HDMI-CEC capable device or another hub joins in.
 
 Please refer to the [readme](https://github.com/danalec/ha-samsungtv#readme) for setup, key chaining patterns and the full
 list of features.

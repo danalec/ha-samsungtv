@@ -85,7 +85,7 @@
       "message": "O Media ID deve ser um inteiro positivo."
     },
     "service_unsupported": {
-      "message": "Não foi possível ligar {entity}, pois não há uma automação configurada."
+      "message": "Não foi possível ligar {entity}: esta TV não tem endereço MAC válido para wake-on-LAN e não há automação de ligamento anexada."
     },
     "source_unsupported": {
       "message": "A entidade {entity} não oferece suporte à fonte {source}."

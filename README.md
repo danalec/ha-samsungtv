@@ -11,6 +11,55 @@ A custom component that controls Samsung TVs from [Home Assistant](https://home-
 This integration is **the official [`samsungtv` integration](https://www.home-assistant.io/integrations/samsungtv/)**, taken
 from `home-assistant/core`, adapted to the `samsungtv_custom` domain, plus **key chaining**.
 
+## Rebuilt on the current SamsungTV
+
+This is the most important change in this fork, so it is worth being blunt about what it fixes.
+
+**What it was built on before.** The lineage this fork grew out of —
+[roberodin/ha-samsungtv-custom](https://github.com/roberodin/ha-samsungtv-custom) →
+[jaruba/ha-samsungtv-tizen](https://github.com/jaruba/ha-samsungtv-tizen) →
+[ollo69/ha-samsungtv-smart](https://github.com/ollo69/ha-samsungtv-smart) — carried a protocol layer from an
+older generation of the Samsung websocket API. It spoke `legacy` on 55000 and the plain websocket on 8001/8002.
+
+**What it was missing.** Port 8000 does not appear anywhere in that lineage, and neither does the `encrypted` method.
+That is not a small omission. The H and J series — the 2021 naming, `UN55HU6900`, `UE55JU6800` and their siblings —
+pair over the encrypted websocket on port 8000 and refuse the plain websocket outright. On that base they had no working
+transport at all, and they failed silently: the entry set up, the entities appeared, and every key was dropped with
+nothing in the log to explain why. "My TV is detected but nothing works" was the defining bug of that base.
+
+**What it is built on now.** The current `samsungtv` integration from `home-assistant/core`, which speaks all three
+transports:
+
+| | Before | Now |
+| --- | --- | --- |
+| 2016–2020 Tizen | `legacy`, websocket | `legacy`, websocket |
+| Neo QLED (`QN90B`, `Q80B`, …) | websocket | websocket |
+| **H / J series** (`UN55HU6900`, `UE55JU6800`) | **no working transport** | **`encrypted` on 8000, PIN pairing** |
+| H / J model detection | absent | present |
+| Discovery | partial | DHCP, SSDP and zeroconf |
+| Re-authentication when the TV revokes the token | absent | present |
+
+So the H and J series, a large slice of the 2021-onward range, went from uncontrollable to working.
+
+**What still tracks upstream, and what does not.** Ten of the modules are byte-for-byte identical to the official
+integration — `__init__.py`, `config_flow.py`, `coordinator.py`, `device_trigger.py`, `diagnostics.py`, `helpers.py`,
+`remote.py`, `trigger.py` and both files under `triggers/`. That matters day to day: a protocol fix merged upstream
+arrives here without a rewrite.
+
+Four modules diverge, and each divergence is marked in the source and pinned by a check:
+
+- **`bridge.py`** — a TV that refuses the token answers the command with `No Authorized` and keeps the socket open
+  instead of closing it. Upstream's library only converts that into an exception at connect time, so during normal
+  operation the rejection is dropped and the entry looks healthy while dropping every key. This fork notices and starts
+  re-authentication. It also adds direct input switching.
+- **`entity.py`** — `turn_on` sends a wake-on-LAN packet before running the turn-on automation, because the common
+  claim that Samsung TVs ignore wake-on-LAN does not hold for the Neo QLED family.
+- **`media_player.py`** — key chaining, the `send_key` media type, and the source list.
+- **`const.py`** — the domain name.
+
+All four are upstreamable. If any of them is accepted into `home-assistant/core`, the local block goes away and the
+check that pins it stays.
+
 ## Why this fork exists
 
 The official integration ships with Home Assistant. This fork exists for the features it does not have:
@@ -19,9 +68,8 @@ The official integration ships with Home Assistant. This fork exists for the fea
   dropping the keys you sent too fast.
 - **A `send_key` media type** — send any raw Samsung key code through the stock `media_player.play_media` service, without
   a custom service to register.
-
-Everything else deliberately tracks upstream. The protocol layer (`bridge.py`) is byte-for-byte identical to the official
-integration, so a bug fixed upstream lands here without a rewrite.
+- **Wake-on-LAN on `turn_on`**, which upstream does not attempt.
+- **Direct input switching**, when the TV reports its own inputs.
 
 ## What you get
 
@@ -35,7 +83,8 @@ Two entities per TV:
 Plus:
 
 - **Three protocols**, chosen automatically per model — see [Protocols](#protocols).
-- **2021+ TV support** via the encrypted websocket on port 8000, with PIN pairing.
+- **H and J series support** (`UN55HU6900`, `UE55JU6800` and siblings) via the encrypted websocket on port 8000, with
+  PIN pairing. The previous base had no transport for them at all.
 - **Discovery** over DHCP, SSDP and zeroconf (AirPlay), so the TV shows up in the UI without typing an IP address.
 - **Volume and mute over UPnP** (`RenderingControl`), which needs discovery — without it, those two features degrade.
 - **Device triggers** for turn on and turn off, so automations can act on TV state.
@@ -93,8 +142,8 @@ integration generates, and it continues for as long as the entry is loaded. What
 | `encrypted` (8000) | A REST device-info call for `PowerState`, refreshed on every poll |
 
 The encrypted bridge deliberately avoids its fallback path: when a model does not report `PowerState` in its device
-info, opening a websocket can **wake the TV**. If your 2021+ TV turns itself on after a while with this integration
-loaded, that is the path being taken.
+info, opening a websocket can **wake the TV**. If a TV on the encrypted protocol turns itself on after a while with this
+integration loaded, that is the path being taken.
 
 Volume and mute are **not** polled. They arrive as UPnP `RenderingControl` events from the TV, which is what
 `iot_class: local_push` refers to. Without discovery there is no UPnP device, those two attributes stop updating, and
@@ -121,8 +170,8 @@ Selection is by model name: the letter in position 5 of the model string decides
 needs the PIN flow; `QN90B` has a B there, so it does not. When the encrypted method is tried and the TV refuses to
 connect, the integration falls back to websocket on its own.
 
-If a 2021+ TV settles on `legacy`, the model was not detected correctly and the TV will refuse keys. Open an issue with
-the log.
+If an H or J series TV settles on `legacy`, the model was not detected correctly and the TV will refuse keys. Open an
+issue with the log.
 
 ## Validated models
 

@@ -167,9 +167,13 @@ namespace: dict[str, object] = {
     "ENCRYPTED_WEBSOCKET_PORT": 8000,
     "is_auth_error_message": load_function(
         "is_auth_error_message",
-        extra_globals={"AUTH_ERROR_MESSAGES": load_constant("AUTH_ERROR_MESSAGES")},
+        extra_globals={
+            "AUTH_ERROR_MESSAGES": load_constant("AUTH_ERROR_MESSAGES"),
+            "METHOD_IN_ERROR_MESSAGE": load_constant("METHOD_IN_ERROR_MESSAGE"),
+        },
     ),
     "AUTH_ERROR_MESSAGES": load_constant("AUTH_ERROR_MESSAGES"),
+        "METHOD_IN_ERROR_MESSAGE": load_constant("METHOD_IN_ERROR_MESSAGE"),
 }
 
 # Recompile _remote_event against the namespace above.
@@ -232,6 +236,14 @@ for variant in ("no authorized", "Not Authorized", "Unauthorized"):
     bridge = fire(error(variant))
     check(f"case variant {variant!r} -> auth_failed", bridge.auth_failed, True)
 
+# An ms.error naming a method is about the protocol, not the token. The
+# known message is handled by the branch above; a firmware that wordes it
+# with "unauthorized" must not be diverted into re-authentication.
+bridge = fire(error("unauthorized method value : ms.remote.control"))
+check("unauthorized *method* -> auth_failed", bridge.auth_failed, False)
+check("unauthorized *method* -> reauth calls", bridge.reauth_calls, 0)
+check("unauthorized *method* -> no config rewrite", bridge.config_updates, [])
+
 # The pre-existing upstream branch must keep working untouched.
 bridge = fire(error("unrecognized method value : ms.remote.control"))
 check("unrecognized method -> auth_failed", bridge.auth_failed, False)
@@ -252,6 +264,27 @@ for unrelated in ("something else went wrong", None):
 # A payload with no data at all must not raise.
 bridge = fire({"event": "ms.error"})
 check("ms.error without data -> auth_failed", bridge.auth_failed, False)
+
+# Malformed payloads must not raise. This runs inside the websocket receive
+# loop, so an AttributeError here escapes into the library's listener - on the
+# very connection whose health this branch exists to report on. Upstream got
+# this right by short-circuiting on falsy `data`; a rewrite using
+# `.get("data", {})` silently dropped that, because the default only applies
+# when the key is absent, not when the value is null.
+for label, payload in (
+    ("data null", {"event": "ms.error", "data": None}),
+    ("data is a string", {"event": "ms.error", "data": "text"}),
+    ("data is a list", {"event": "ms.error", "data": [1, 2]}),
+    ("message is an int", {"event": "ms.error", "data": {"message": 401}}),
+    ("message is a list", {"event": "ms.error", "data": {"message": []}}),
+):
+    try:
+        bridge = fire(payload)
+    except Exception as err:  # noqa: BLE001 - the point is that none escapes
+        failures.append(f"malformed {label}: raised {type(err).__name__}: {err}")
+        print(f"FAIL   malformed {label:<44} raised {type(err).__name__}")
+        continue
+    check(f"malformed {label} -> no auth_failed", bridge.auth_failed, False)
 
 # The app-list branch must be untouched by the new one.
 bridge = FakeBridge()

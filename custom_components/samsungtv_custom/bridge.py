@@ -115,17 +115,25 @@ def model_may_require_encryption(model: str | None) -> bool:
 # differently; the wording observed on a QN90B is exactly "No Authorized".
 AUTH_ERROR_MESSAGES = ("no authorized", "not authorized", "unauthorized")
 
+# An ms.error that names a method is about the protocol, not about the token.
+# "unrecognized method value : ms.remote.control" and a hypothetical
+# "unauthorized method value : ms.remote.control" mean the TV wants the PIN
+# flow, and must not be diverted into re-authentication.
+METHOD_IN_ERROR_MESSAGE = "ms.remote.control"
+
 # The TV reports its physical inputs here and accepts a switch on ed.setSource.
 # Both are websocket-only: the legacy protocol has no channel to emit on.
 ED_SOURCES_EVENT = "ed.sourcesChanged"
 ED_SET_SOURCE_EVENT = "ed.setSource"
 
 
-def is_auth_error_message(message: str | None) -> bool:
+def is_auth_error_message(message: object) -> bool:
     """Return True when an ms.error message means the token was refused."""
-    if not message:
+    if not isinstance(message, str):
         return False
     lowered = message.lower()
+    if METHOD_IN_ERROR_MESSAGE in lowered:
+        return False
     return any(candidate in lowered for candidate in AUTH_ERROR_MESSAGES)
 
 
@@ -835,7 +843,17 @@ class SamsungTVWSBridge(
         if event == MS_ERROR_EVENT:
             # { 'event': 'ms.error',
             #   'data': {'message': 'unrecognized method value : ms.remote.control'}}
-            message = response.get("data", {}).get("message")
+            #
+            # This runs inside the websocket receive loop, so it must not
+            # raise on a malformed frame. Upstream short-circuited on falsy
+            # `data`; `.get("data", {})` is not equivalent because it only
+            # substitutes the default when the key is absent, not when the
+            # value is null. A `data` of null, a string or a number all
+            # reached `.get()` and raised AttributeError from the library's
+            # listener - on the very connection whose health this branch
+            # exists to report on.
+            data = response.get("data")
+            message = data.get("message") if isinstance(data, dict) else None
             if message == "unrecognized method value : ms.remote.control":
                 LOGGER.error(
                     (

@@ -18,13 +18,15 @@ from .coordinator import SamsungTVDataUpdateCoordinator
 from .triggers.turn_on import async_get_turn_on_trigger
 
 # A MAC is six hex bytes. The config flow stores whatever the TV reported, so
-# accept any of the separator styles rather than assuming one.
-MAC_RE = re.compile(r"^[0-9a-fA-F]{2}([:-]?)(?:[0-9a-fA-F]{2}\1){4}[0-9a-fA-F]{2}$")
+# accept any of the separator styles rather than assuming one. \Z rather than $
+# because Python's $ also matches before a trailing newline, and a MAC that
+# happens to carry one would build a malformed magic packet.
+MAC_RE = re.compile(r"^[0-9a-fA-F]{2}([:-]?)(?:[0-9a-fA-F]{2}\1){4}[0-9a-fA-F]{2}\Z")
 
 
-def is_valid_mac(mac: str | None) -> bool:
+def is_valid_mac(mac: object) -> bool:
     """Return True when the string can be turned into a magic packet."""
-    return bool(mac) and bool(MAC_RE.match(mac))  # type: ignore[arg-type]
+    return isinstance(mac, str) and bool(MAC_RE.match(mac))
 
 
 class SamsungTVEntity(CoordinatorEntity[SamsungTVDataUpdateCoordinator], Entity):
