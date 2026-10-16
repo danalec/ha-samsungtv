@@ -1,0 +1,47 @@
+# Based on home-assistant/core pyproject.toml, scoped to what this component
+# actually needs. The old top-level `select` form is rejected by ruff >= 0.2.
+#
+# target-version matches the upstream this component is based on: HA core
+# requires-python is ">=3.14.2", so the bridge legitimately uses PEP 649
+# (lazy annotations) and the PEP 758 unparenthesized except syntax.
+target-version = "py314"
+
+# Same floor as upstream home-assistant/core pyproject.toml. An older ruff
+# silently reports a different rule set, which is false confidence.
+required-version = ">=0.16.10"
+
+[lint]
+select = [
+    "B007",  # loop control variable not used within the loop body
+    "B014",  # exception handler with duplicate exception
+    "C",     # complexity
+    "E",     # pycodestyle
+    "F",     # pyflakes
+    "PIE",   # misc lints
+    "RET",   # return statements
+    "RSE",   # raise statements
+    "SIM",   # simplifications
+    "UP",    # pyupgrade
+    "W",     # pycodestyle warnings
+]
+
+# Every entry below is also on the upstream ignore list in
+# home-assistant/core pyproject.toml, so these files stay in sync with the
+# source of truth. Do not add a local ignore to silence inherited code: fix
+# it upstream first, or make the divergence explicit here.
+ignore = [
+    "E501",  # line length is handled by the formatter, not the linter
+    "E731",  # do not assign a lambda, use a def
+    "C901",  # this component has long but linear protocol handlers
+    "RET504",# named result makes the state machine easier to follow
+    "SIM102",# nested ifs mirror the protocol state machine
+    "SIM103",# an early return reads better than a negated compound condition
+    "SIM108",# if/else is clearer than a conditional expression here
+    "UP049",  # allow the upstream _RemoteT / _CommandT type parameter names
+]
+
+[lint.pyupgrade]
+keep-runtime-typing = true
+
+[lint.mccabe]
+max-complexity = 30
