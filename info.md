@@ -2,7 +2,7 @@
 
 Control Samsung TVs from Home Assistant, including 2021 and newer models.
 
-This is the official `samsungtv` integration from `home-assistant/core`, adapted to the `samsungtv_custom` domain and
+This is based on the `samsungtv` integration from `home-assistant/core`, adapted to the `samsungtv_custom` domain and
 extended with **key chaining** — send a sequence of keys with explicit delays, so the TV follows a menu instead of
 dropping keys sent too fast.
 

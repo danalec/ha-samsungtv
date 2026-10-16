@@ -8,8 +8,9 @@
 
 A custom component that controls Samsung TVs from [Home Assistant](https://home-assistant.io).
 
-This integration is **the official [`samsungtv` integration](https://www.home-assistant.io/integrations/samsungtv/)**, taken
-from `home-assistant/core`, adapted to the `samsungtv_custom` domain, plus **key chaining**.
+This custom component is based on the [`samsungtv` integration](https://www.home-assistant.io/integrations/samsungtv/) from
+`home-assistant/core`, adapted to the `samsungtv_custom` domain, plus **key chaining**, **direct input switching** and
+**wake-on-LAN**.
 
 ## Rebuilt on the current SamsungTV
 
