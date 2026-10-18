@@ -30,6 +30,11 @@ target = next(
     for n in cls.body
     if isinstance(n, ast.AsyncFunctionDef) and n.name == "_async_send_key_chain"
 )
+# The parser delegates the clamp to a module-level helper, so it has to be
+# extracted alongside it or the call resolves to nothing.
+delay_fn = next(
+    n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "keychain_delay"
+)
 
 # constants the parser closes over, read from the real module
 consts = {}
@@ -43,9 +48,10 @@ for node in tree.body:
                     pass
 
 ns = {"asyncio": asyncio, **{k: v for k, v in consts.items() if "KEYPRESS" in k}}
-exec(compile(ast.Module(body=[target], type_ignores=[]), str(SRC), "exec"), ns)
+exec(compile(ast.Module(body=[delay_fn, target], type_ignores=[]), str(SRC), "exec"), ns)
 
 send_chain = ns["_async_send_key_chain"]
+keychain_delay = ns["keychain_delay"]
 
 
 class Entity:
@@ -120,6 +126,28 @@ async def main():
 
     sent, el = await run("KEY_EXIT+KEY_EXIT+KEY_ENTER")
     check("three keys", sent, ["KEY_EXIT", "KEY_EXIT", "KEY_ENTER"])
+
+    # "²".isdigit() is True but int("²") raises ValueError, so a chain
+    # containing one used to abort out of async_play_media and leave the
+    # remaining segments unsent.
+    check("superscript is not a valid delay", keychain_delay("²"), ns["KEYPRESS_MAX_DELAY"])
+    check("circled digit is not a valid delay", keychain_delay("①"), ns["KEYPRESS_MAX_DELAY"])
+    # CPython refuses int() above its 4300-digit conversion limit.
+    check(
+        "digit run over the int() limit clamps to max",
+        keychain_delay("9" * 5000),
+        ns["KEYPRESS_MAX_DELAY"],
+    )
+    check("normal delay still parsed", keychain_delay("500"), 0.5)
+    check("tiny delay still clamps to min", keychain_delay("10"), ns["KEYPRESS_MIN_DELAY"])
+
+    # End to end: the chain completes and both keys are still delivered.
+    sent, el = await run("KEY_A+²+KEY_B")
+    check("hostile segment does not abort the chain", sent, ["KEY_A", "KEY_B"])
+    sent, el = await run("KEY_A+" + "9" * 5000 + "+KEY_B")
+    check("oversized segment does not abort the chain", sent, ["KEY_A", "KEY_B"])
+    sent, el = await run("KEY_A+" + "9" * 5000 + "+KEY_B")
+    check("oversized segment stays a delay, not a key", sent, ["KEY_A", "KEY_B"])
 
     print()
     if failures:

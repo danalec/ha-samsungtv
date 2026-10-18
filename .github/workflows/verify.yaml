@@ -30,6 +30,9 @@ jobs:
 
       # Home Assistant is not a dependency here: these scripts extract the real
       # functions from the source with ast and exercise them directly.
+      - name: Verify app list parsing
+        run: python scripts/verify_apps.py
+
       - name: Verify key chaining
         run: python scripts/verify_keychain.py
 

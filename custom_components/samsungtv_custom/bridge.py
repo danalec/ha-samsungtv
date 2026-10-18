@@ -6,7 +6,7 @@ from asyncio.exceptions import TimeoutError as AsyncioTimeoutError
 from collections.abc import Callable, Iterable, Mapping
 import contextlib
 from datetime import datetime, timedelta
-from typing import Any, cast, override
+from typing import Any, override
 
 from samsungctl import Remote
 from samsungctl.exceptions import AccessDenied, ConnectionClosed, UnhandledResponse
@@ -21,7 +21,6 @@ from samsungtvws.encrypted.remote import (
 from samsungtvws.event import (
     ED_INSTALLED_APP_EVENT,
     MS_ERROR_EVENT,
-    parse_installed_app,
 )
 from samsungtvws.exceptions import (
     ConnectionFailure,
@@ -179,6 +178,52 @@ def parse_sources(event: str, response: Any) -> dict[str, str]:
         if isinstance(name, str) and isinstance(source_id, str) and name and source_id:
             parsed[name] = source_id
     return parsed
+
+
+def parse_installed_apps(response: Any) -> dict[str, str]:
+    """Map app name to app id from an ed.installedApp.get reply.
+
+    This branch is not upstream: see AGENTS.md.
+
+    Upstream reads the payload with samsungtvws' own `parse_installed_app`,
+    which is literally `return event["data"]["data"]` - no validation of any
+    kind - and then subscripts every app twice: `app["name"]` and
+    `app["appId"]`.
+
+    That runs inside the websocket receive loop, where an exception is not
+    recoverable. The library wraps the loop in `suppress(ConnectionClosed)`
+    only, so a KeyError or TypeError from this callback ends the recv task
+    permanently. `is_alive()` keeps answering True because the socket is
+    still open, so the bridge keeps handing out a dead remote and never
+    reconnects. Every inbound frame is then lost - including the ms.error
+    that starts re-authentication - while outbound keys keep being written to
+    a socket nobody is reading. The entry looks healthy and drops commands.
+    `close()` re-raises the same exception, so it also escapes the unload and
+    the turn-off path.
+
+    Anything unrecognised yields an empty mapping, exactly as parse_sources
+    does. An app list that cannot be read is not worth losing the connection.
+    """
+    if not isinstance(response, dict):
+        return {}
+    data = response.get("data")
+    if not isinstance(data, dict):
+        return {}
+    apps = data.get("data")
+    if not isinstance(apps, list):
+        return {}
+
+    parsed: dict[str, str] = {}
+    for app in apps:
+        if not isinstance(app, dict):
+            continue
+        name = app.get("name")
+        app_id = app.get("appId")
+        if isinstance(name, str) and isinstance(app_id, str) and name and app_id:
+            parsed[name] = app_id
+    # Upstream sorted by name before building the dict; the entity shows this
+    # list to the user, so keep that order.
+    return dict(sorted(parsed.items()))
 
 
 async def async_get_device_info(
@@ -631,7 +676,15 @@ class SamsungTVWSBridge(
             LOGGER.debug("Checking if TV %s is on using device info", self.host)
             # Ensure we get an updated value
             info = await self.async_device_info(force=True)
-            return info is not None and info["device"]["PowerState"] == "on"
+            # This branch is not upstream: see AGENTS.md. The guard above reads
+            # the cached _device_info, while this line reads the freshly fetched
+            # payload, which rest_device_info() does not validate at all - it is
+            # a bare json.loads. A TV that answers {} or {"device": null} made
+            # this raise KeyError on every poll, and DataUpdateCoordinator turns
+            # that into last_update_success=False, so the entity sat unavailable
+            # for as long as the TV kept answering that way.
+            device = info.get("device") if isinstance(info, dict) else None
+            return isinstance(device, dict) and device.get("PowerState") == "on"
 
         return await super().async_is_on()
 
@@ -823,15 +876,7 @@ class SamsungTVWSBridge(
     def _remote_event(self, event: str, response: Any) -> None:
         """Received event from remote websocket."""
         if event == ED_INSTALLED_APP_EVENT:
-            self._notify_app_list_callback(
-                {
-                    app["name"]: app["appId"]
-                    for app in sorted(
-                        parse_installed_app(response),
-                        key=lambda app: cast(str, app["name"]),
-                    )
-                }
-            )
+            self._notify_app_list_callback(parse_installed_apps(response))
             return
         # This branch is not upstream: see AGENTS.md.
         if (sources := parse_sources(event, response)):
