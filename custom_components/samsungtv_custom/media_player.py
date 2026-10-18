@@ -75,6 +75,34 @@ KEYPRESS_MIN_DELAY = 0.2
 KEYPRESS_MAX_DELAY = 2.0
 KEYPRESS_DEFAULT_DELAY = 0.5
 
+# Longest digit run any delay needs. Six digits already reaches
+# KEYPRESS_MAX_DELAY, so a longer run cannot express anything more, and
+# CPython refuses int() above 4300 digits.
+_KEYPRESS_MAX_DIGITS = 6
+
+
+def keychain_delay(magnitude: str) -> float:
+    """Return the clamped delay, in seconds, for one numeric chain segment.
+
+    This function is not upstream: see AGENTS.md.
+
+    `isdigit()` is True for characters int() refuses - superscripts and circled
+    digits such as '²' and '①' - so `int(magnitude)` raised ValueError out of
+    async_play_media and left the rest of the chain unapplied. A digit run
+    above CPython's 4300-digit conversion limit raised the same way.
+
+    Both are handled by clamping the input before conversion and by treating
+    an unconvertible segment as the maximum delay, which is what such a
+    segment meant anyway. The delay is recognised before parsing, so a long
+    run stays a delay instead of falling through and being sent to the TV as
+    a key code.
+    """
+    try:
+        value = int(magnitude[:_KEYPRESS_MAX_DIGITS])
+    except ValueError:
+        return KEYPRESS_MAX_DELAY
+    return min(max(value / 1000, KEYPRESS_MIN_DELAY), KEYPRESS_MAX_DELAY)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -387,12 +415,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             magnitude = this_key.lstrip("+-")
 
             if magnitude.isdigit() and magnitude:
-                await asyncio.sleep(
-                    min(
-                        max(int(magnitude) / 1000, KEYPRESS_MIN_DELAY),
-                        KEYPRESS_MAX_DELAY,
-                    )
-                )
+                await asyncio.sleep(keychain_delay(magnitude))
                 last_was_delay = True
                 continue
 

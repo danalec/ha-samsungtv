@@ -19,6 +19,7 @@ code rather than a copy of it. Run it directly:
 from __future__ import annotations
 
 import ast
+import asyncio
 import logging
 import pathlib
 import sys
@@ -159,7 +160,12 @@ namespace: dict[str, object] = {
         "parse_sources", extra_globals={"ED_SOURCES_EVENT": load_constant("ED_SOURCES_EVENT")}
     ),
     "ED_SOURCES_EVENT": load_constant("ED_SOURCES_EVENT"),
-    "cast": lambda _type, value: value,
+    # Imported from samsungtvws rather than defined here. The library's own
+    # value is "ed.installedApp.get"; an earlier revision of this script
+    # passed "ed.installedApp" and so never entered the branch it claimed to
+    # cover. Checked against xchwarze/samsung-tv-ws-api samsungtvws/event.py.
+    "ED_INSTALLED_APP_EVENT": "ed.installedApp.get",
+    "parse_installed_apps": load_function("parse_installed_apps"),
     "LOGGER": logging.getLogger("verify_protocol"),
     "CONF_METHOD": "method",
     "CONF_PORT": "port",
@@ -173,7 +179,7 @@ namespace: dict[str, object] = {
         },
     ),
     "AUTH_ERROR_MESSAGES": load_constant("AUTH_ERROR_MESSAGES"),
-        "METHOD_IN_ERROR_MESSAGE": load_constant("METHOD_IN_ERROR_MESSAGE"),
+    "METHOD_IN_ERROR_MESSAGE": load_constant("METHOD_IN_ERROR_MESSAGE"),
 }
 
 # Recompile _remote_event against the namespace above.
@@ -286,12 +292,111 @@ for label, payload in (
         continue
     check(f"malformed {label} -> no auth_failed", bridge.auth_failed, False)
 
-# The app-list branch must be untouched by the new one.
+# The app-list branch must be untouched by the new one. The event name matters:
+# it is ED_INSTALLED_APP_EVENT ("ed.installedApp.get"), so anything else falls
+# through here without ever reaching the app parser.
 bridge = FakeBridge()
 bridge._remote_event = types.MethodType(remote_event, bridge)
-bridge._remote_event("ed.installedApp", {"data": {}})
-check("ed.installedApp -> no reauth", bridge.reauth_calls, 0)
-check("ed.installedApp -> no auth_failed", bridge.auth_failed, False)
+bridge._remote_event("ed.installedApp.get", {"data": {}})
+check("ed.installedApp.get -> no reauth", bridge.reauth_calls, 0)
+check("ed.installedApp.get -> no auth_failed", bridge.auth_failed, False)
+check("ed.installedApp.get -> empty app list", bridge.app_lists, [{}])
+
+# A well-formed reply still reaches the app list intact.
+bridge = FakeBridge()
+bridge._remote_event = types.MethodType(remote_event, bridge)
+bridge._remote_event(
+    "ed.installedApp.get",
+    {"event": "ed.installedApp.get", "data": {"data": [{"name": "Netflix", "appId": "12"}]}},
+)
+check("ed.installedApp.get -> apps delivered", bridge.app_lists, [{"Netflix": "12"}])
+
+# The payload shapes that used to raise out of the receive loop. An exception
+# here is not a log line, it is the recv task dying while is_alive() keeps
+# reporting True, so the bridge never reconnects and every inbound frame is
+# lost while keys keep going out. See verify_apps.py for the full matrix.
+for label, response in (
+    ("data empty", {"event": "ed.installedApp.get", "data": {}}),
+    ("data null", {"event": "ed.installedApp.get", "data": None}),
+    ("data.data null", {"event": "ed.installedApp.get", "data": {"data": None}}),
+    ("entries not dicts", {"event": "ed.installedApp.get", "data": {"data": [None, 1]}}),
+    ("entry missing name", {"event": "ed.installedApp.get", "data": {"data": [{"appId": "1"}]}}),
+):
+    bridge = FakeBridge()
+    bridge._remote_event = types.MethodType(remote_event, bridge)
+    try:
+        bridge._remote_event("ed.installedApp.get", response)
+    except Exception as err:  # noqa: BLE001 - the point is that none escapes
+        failures.append(f"app list {label}: raised {type(err).__name__}: {err}")
+        print(f"FAIL   app list {label:<44} raised {type(err).__name__}")
+        continue
+    check(f"app list {label} -> empty, no raise", bridge.app_lists, [{}])
+
+# ------------------------------------------------- power state from a payload
+# async_is_on guards the *cached* _device_info but then read the *freshly
+# fetched* payload, which rest_device_info() does not validate - it is a bare
+# json.loads. So a TV answering {} or {"device": null} raised KeyError on every
+# poll, DataUpdateCoordinator turned that into last_update_success=False, and
+# the entity sat unavailable for as long as the TV kept answering that way.
+is_on = load_function(
+    # SamsungTVWSBridge, not SamsungTVWSBaseBridge: both define async_is_on and
+    # only this one consults PowerState.
+    "async_is_on", class_name="SamsungTVWSBridge",
+    extra_globals={
+        "LOGGER": logging.getLogger("verify_protocol"),
+        # async_is_on carries @override; a pass-through is enough here.
+        "override": lambda func: func,
+    },
+)
+
+
+class PowerStub:
+    """Bridge stand-in whose device_info payload is whatever we hand it."""
+
+    def __init__(self, spec: object, payload: object) -> None:
+        self.host = "192.0.2.10"
+        self._spec = spec
+        self._payload = payload
+
+    def _get_device_spec(self, key: str) -> object:
+        return self._spec if key == "PowerState" else None
+
+    async def async_device_info(self, force: bool = False) -> object:
+        return self._payload
+
+
+async def is_on_with(spec: object, payload: object) -> bool:
+    """Call the real async_is_on with a stubbed device_info."""
+    return await is_on(PowerStub(spec, payload))
+
+
+async def check_power() -> None:
+    for label, spec, payload, expected in (
+        ("PowerState on", "on", {"device": {"PowerState": "on"}}, True),
+        ("PowerState off", "off", {"device": {"PowerState": "off"}}, False),
+        (
+            "no device key",
+            "on",
+            {"websocket": {"PowerState": "on"}},
+            False,
+        ),
+        ("device null", "on", {"device": None}, False),
+        ("payload empty", "on", {}, False),
+        ("payload null", "on", None, False),
+        ("payload is a list", "on", [], False),
+        ("device is a string", "on", {"device": "on"}, False),
+        ("PowerState missing", "on", {"device": {}}, False),
+    ):
+        try:
+            got = await is_on_with(spec, payload)
+        except Exception as err:  # noqa: BLE001 - the point is that none escapes
+            failures.append(f"power {label}: raised {type(err).__name__}: {err}")
+            print(f"FAIL   power {label:<44} raised {type(err).__name__}: {err}")
+            continue
+        check(f"power {label}", got, expected)
+
+
+asyncio.run(check_power())
 
 print()
 if failures:
