@@ -1,14 +1,17 @@
 # Home Assistant - SamsungTV Custom
 
-Control Samsung TVs from Home Assistant, including 2021 and newer models.
+Control Samsung TVs from Home Assistant, including the H and J series, which need the encrypted websocket on port 8000.
 
 This is based on the `samsungtv` integration from `home-assistant/core`, adapted to the `samsungtv_custom` domain and
 extended with **key chaining** — send a sequence of keys with explicit delays, so the TV follows a menu instead of
-dropping keys sent too fast.
+dropping keys sent too fast — plus **direct input switching** and **wake-on-LAN** on turn on.
 
 **Rebuilt on the current protocol layer.** The previous base only spoke the legacy port and the plain websocket, so the
 H and J series — a large slice of the 2021-onward range — had no working transport and failed silently. This one speaks
 all three, including the encrypted websocket on port 8000 with PIN pairing.
+
+**Nothing the TV sends can take the connection down.** The app list, the power state and the input list are parsed
+defensively; a reply that cannot be read degrades to an empty list instead of killing the socket.
 
 **Two entities per TV:** a `media_player` (power, volume, mute, transport, sources) and a `remote` (raw key commands with
 repeat). Setup happens entirely in the UI, over DHCP, SSDP or zeroconf discovery.
