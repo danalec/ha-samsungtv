@@ -47,16 +47,22 @@ integration — `__init__.py`, `config_flow.py`, `coordinator.py`, `device_trigg
 `remote.py`, `trigger.py` and both files under `triggers/`. That matters day to day: a protocol fix merged upstream
 arrives here without a rewrite.
 
-Four modules diverge, and each divergence is marked in the source and pinned by a check:
+Four modules diverge, and each divergence is pinned by a check:
 
 - **`bridge.py`** — a TV that refuses the token answers the command with `No Authorized` and keeps the socket open
   instead of closing it. Upstream's library only converts that into an exception at connect time, so during normal
   operation the rejection is dropped and the entry looks healthy while dropping every key. This fork notices and starts
-  re-authentication. It also adds direct input switching.
+  re-authentication. It also adds direct input switching, and it stops trusting the TV's payloads: the installed-app list
+  and the power state are read through type-checked parsers, because upstream indexes them blindly, and an exception
+  inside the receive loop kills the connection for good while the bridge keeps reporting it as alive.
 - **`entity.py`** — `turn_on` sends a wake-on-LAN packet before running the turn-on automation, because the common
   claim that Samsung TVs ignore wake-on-LAN does not hold for the Neo QLED family.
-- **`media_player.py`** — key chaining, the `send_key` media type, and the source list.
+- **`media_player.py`** — key chaining, the `send_key` media type, the source list, and the clamp that keeps a
+  malformed delay from aborting the rest of the chain.
 - **`const.py`** — the domain name.
+
+Three of the four carry a marker in the source saying which lines are local. `media_player.py` does not: its local
+blocks have to be found by diffing against upstream, which is exactly the kind of thing that rots.
 
 All four are upstreamable. If any of them is accepted into `home-assistant/core`, the local block goes away and the
 check that pins it stays.
@@ -90,6 +96,9 @@ Plus:
 - **Volume and mute over UPnP** (`RenderingControl`), which needs discovery — without it, those two features degrade.
 - **Device triggers** for turn on and turn off, so automations can act on TV state.
 - **App list** read from the TV, merged into the `media_player` source list — see [apps and app IDs](docs/App_ids.md).
+- **Defensive parsing of everything the TV sends.** A TV is free to answer with a null, a string where a list belongs, or
+  a frame truncated mid-way. None of those can take the connection down: the app list, the power state and the input list
+  are parsed defensively, and an unreadable reply degrades to "no apps" or "no sources" rather than to a dead socket.
 
 ## Requirements
 
@@ -123,7 +132,8 @@ Configuration is UI-only — there is no `configuration.yaml` block for this int
 2. If your TV was discovered, it is listed automatically; otherwise search for **SamsungTV** and enter the host and name.
 3. Confirm. If you have never connected Home Assistant to this TV, a popup appears **on the TV** — accept it within
    30 seconds.
-4. For a 2021 or newer TV, the TV displays a PIN. Enter it in the dialog.
+4. For an H or J series TV (`UN55HU6900`, `UE55JU6800` and siblings), the TV displays a PIN. Enter it in the dialog.
+   Other models, Neo QLED included, grant the token from the popup and never ask for one.
 
 If setup fails, power cycle the TV first. Applications left running on the TV can hold the websocket port and block the
 connection. Check the Home Assistant log for the reason.
@@ -323,6 +333,7 @@ installed by Home Assistant.
 ```bash
 python -m compileall -q custom_components/samsungtv_custom   # byte-compile
 ruff check custom_components/samsungtv_custom               # lint (ruff.toml)
+python scripts/verify_apps.py                              # app list parsing and the shapes that used to raise
 python scripts/verify_keychain.py                           # key chain parsing, delay clamping
 python scripts/verify_imports.py                            # no orphaned or broken relative imports
 python scripts/verify_strings.py                            # strings.json and translations agree leaf for leaf
@@ -339,7 +350,7 @@ uvx ruff@0.16.10 check custom_components/samsungtv_custom
 ```
 
 Home Assistant is not a dev dependency, so the verification scripts read the real shipped files rather than a copy: the
-key-chain and import checks extract the functions they exercise with `ast`, and the strings check compares
+app-list, key-chain and import checks extract the functions they exercise with `ast`, and the strings check compares
 `strings.json` against every file in `translations/` leaf for leaf.
 
 Both commands run in CI on every push and pull request (`.github/workflows/verify.yaml`), alongside
@@ -367,7 +378,8 @@ is on and not in a menu.
 | Log shows 8001 failing on a Neo QLED | That firmware refuses plain `ws://`. The integration retries on 8002 automatically |
 | TV shows `on` while the screen is black | **Instant On** is enabled, keeping the network alive in standby. Turn it off |
 | Volume slider does nothing | Volume level needs UPnP, which needs discovery. Check the log for `ssdp_rendering_control_location` |
-| App list is empty | The list is fetched once at startup, and the `legacy` protocol never returns one. See [apps and app IDs](docs/App_ids.md) |
+| App list is empty | The list is fetched once at startup, and the `legacy` protocol never returns one. A reply the integration cannot parse counts as an empty list rather than an error. See [apps and app IDs](docs/App_ids.md) |
+| Keys go out but the TV never answers | The inbound half of the connection is dead — volume does not change and no source info arrives, while sending still works. Reload the integration; if it comes back, download diagnostics and open an issue with the log |
 | `turn_on` does nothing | The TV is on Ethernet and the stored MAC is its Wi-Fi address. Samsung uses a different MAC per interface |
 | No `HDMI 1`, `HDMI 2` in the source list | The TV did not answer `ed.sourcesChanged`. The list falls back to `TV`/`HDMI`, which switch by key code |
 | Entry goes unavailable randomly | Re-authentication is required; a re-auth dialog will appear |
